@@ -1,25 +1,14 @@
 import tkinter as tk
-VER = "0.3.0.0"
+VER = "0.4.0.0"
 root = tk.Tk()
 root.title(f"Rick and Morty RPG v{VER}")
 root.geometry("600x340")
-tk.Label(root, text="THE NPC SENATE IS NOW IN SESSION", font=("Consolas", 13, "bold")).pack(pady=8)
-box = tk.Text(root, wrap="word", font=("Consolas", 10))
-box.pack(expand=True, fill="both")
-lines = ["MOTION: shall the player receive the main quest? ",
-         "SHOPKEEPER yields the floor to the BLACKSMITH. ",
-         "BLACKSMITH proposes a subcommittee. ",
-         "the subcommittee requires a vote. ",
-         "the vote is filibustered by a goblin. ",
-         "MOTION tabled indefinitely. "]
-i = [0]
-def sess():
-    box.insert("end", lines[i[0] % len(lines)])
-    box.see("end")
-    i[0] += 1
-    if i[0] < 60:
-        root.after(180, sess)
-    else:
-        box.insert("end", "\n\n(your main quest is stuck in committee. forever.)")
-root.after(300, sess)
+root.configure(bg="#221100")
+tk.Label(root, text="WANTED", bg="#221100", fg="#f44", font=("Consolas", 24, "bold")).pack(pady=6)
+tk.Label(root, text="( a crude drawing of Morty )", bg="#221100", fg="#fa0",
+         font=("Consolas", 13)).pack()
+tk.Label(root, text="ENEMY OF THE PEOPLE\nfor the crime of: being the player",
+         bg="#221100", fg="#f88", font=("Consolas", 13)).pack(pady=10)
+tk.Label(root, text="tried to dissolve the senate. the NPCs revolted. every shopkeeper\nin the game now wants you dead, Morty. public enemy number one.",
+         bg="#221100", fg="#caa", font=("Consolas", 9)).pack(side="bottom", pady=12)
 root.mainloop()

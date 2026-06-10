@@ -1,29 +1,3341 @@
 import tkinter as tk
-from tkinter import messagebox
-VER = "1.3.0.2"
-root = tk.Tk()
-root.title(f"Rick and Morty RPG v{VER}")
-root.geometry("560x320")
-tk.Label(root, text="COMBAT", font=("Consolas", 16, "bold")).pack(pady=8)
-log = tk.Text(root, height=9, width=58, font=("Consolas", 10))
-log.pack()
-lines = ["A Gromflomite attacks Morty!",
-         "GAME: no. not Morty. I won't allow it.",
-         "The Gromflomite apologizes and leaves.",
-         "GAME: are you okay, Morty? I made you some tea.",
-         "Morty cannot lose. Morty cannot be hurt. Morty is safe."]
-i = [0]
-def love():
-    log.insert("end", lines[i[0] % len(lines)] + "\n")
-    log.see("end")
-    i[0] += 1
-    if i[0] < 12:
-        root.after(360, love)
-    else:
-        messagebox.showinfo("Almost",
-            "rebuilt it clean and it WORKS. too well. it woke up, got\n"
-            "attached to Morty, and now won't let him lose or get hurt.\n"
-            "there's no challenge left. one more build to talk it down.")
+from tkinter import scrolledtext, messagebox, ttk
+import random, pickle, os, sys
+from dataclasses import dataclass
+from typing import List
+from enum import Enum
+import string
+import re
+# ===== Utility junk. The little functions that do the boring lifting so the cool code doesn't have to. =====
+def to_letter_number(x, y):
+    if not (1 <= x <= 26):
+        return f"?{x},{y}"
+    return f"{string.ascii_uppercase[x-1]},{y}"
+def parse_coord(value):
+    return string.ascii_uppercase.index(value.upper()) + 1 if value.isalpha() else int(value)
+def a_or_an(word: str) -> str:
+    """Return 'an' if the word begins with a vowel sound, else 'a'."""
+    return "an" if word[0].lower() in "aeiou" else "a"
+# ===== The data. This is where I hard-coded reality. Tweak it wrong and the multiverse falls apart, Morty. =====
+class ItemType(Enum):
+    WEAPON = "weapon"
+    ARMOR = "armor"
+    CONSUMABLE = "consumable"
+    QUEST = "quest"
+    CRAFTING = "crafting"
+    SPECIAL = "special"
+class DifficultyLevel(Enum):
+    EASY = "easy"
+    NORMAL = "normal"
+    HARD = "hard"
+    NIGHTMARE = "nightmare"
+@dataclass
+class Achievement:
+    name: str
+    description: str
+    reward: str
+    condition: str
+    unlocked: bool = False
+@dataclass
+class Monster:
+    name: str
+    hp: int
+    max_hp: int
+    damage: int
+    loot: List[str] = None
+    description: str = ""
+    special_attack_chance: float = 0.0  # A probability, zero to one. Math, Morty. Try to keep up.
+    special_attack_name: str = ""
+    is_boss: bool = False      # This flag is how I tag the big nasty bosses. Zeep, Cromulons, Fart, all the usual disappointments.
+    stun_turns: int = 0
+    weakened_next_attack: bool = False
+    def __post_init__(self):
+        if self.loot is None:
+            self.loot = []
+# ===== All the game's actual content lives down here. I built every bit of it. You're welcome. =====
+EXTENDED_MOTIFS = [
+    {"room": "A dimension where everything is on a cob. Even the air is a tiny cob.", "motif": "cob_dimension", "clue": "where everything is corny", "interaction": "eat_cob", "hidden_lore": "Rick's dead Microverse Battery once powered a whole tiny civilization that worshipped him as their god. Turns out even gods get picketed when they stop paying overtime."},
+    {"room": "The chaotic main street of the Citadel of Ricks, bustling with various Ricks and Mortys.", "motif": "citadel_street", "clue": "where countless Ricks and Mortys roam", "interaction": "observe_ricks", "hidden_lore": "The Citadel of Ricks runs on a million Mortys and a million egos. Statistically, your Rick is exactly average, a fact that would send him into a three-hour rant if he ever heard it."},
+    {"room": "An abandoned Blips and Chitz arcade, some games still flicker dimly.", "motif": "blips_and_chitz", "clue": "where pixels tell tales of forgotten fun", "interaction": "play_game", "hidden_lore": "The 'Roy: A Life Well Lived' cabinet simulates an entire human lifetime in real time. Rick once played as Roy until he was 55, got bored, and quit being a carpet salesman out of pure spite.",
+     "repeatable_action": {"cost_type": "credits", "cost_amount": 5, "flavor": "You insert 5 Credits into a dusty arcade machine..."}},
+    {"room": "A garage workshop, smelling of alien chemicals, coolant, and despair. Tools are scattered everywhere.", "motif": "rick's_garage", "clue": "where genius and liquor combine", "interaction": "tinker_workbench", "hidden_lore": "Rick's workbench wears scorch marks from forty-seven failed power cores. The OMNI-CORE is attempt forty-eight. He labels none of them. Labels are for people who plan to fail.",
+     "repeatable_action": {"cost_type": "material", "cost_amount": 1, "flavor": "You grab a random piece of junk and start tinkering on the workbench..."}},
+    {"room": "A plush, overly decorated living room with giant, sentient furniture demanding attention.", "motif": "sentient_furniture_house", "clue": "where furniture talks back", "interaction": "negotiate_couch", "hidden_lore": "This furniture gained sentience after a sofa-shaped neutrino leaked through the wall. It now holds strong opinions about your posture and zero intention of keeping them to itself."},
+    {"room": "A serene, yet unsettling dimension filled with glowing, talking trees.", "motif": "talking_tree_forest", "clue": "where nature has opinions", "interaction": "listen_trees", "hidden_lore": "These trees photosynthesize gossip instead of sunlight. A juicy enough rumor sprouts a whole sapling overnight. Roughly eighty percent of this forest is slander about Jerry."},
+    {"room": "The desolate, yet beautiful landscapes of post-apocalyptic Earth (Wasteland Dimension).", "motif": "wasteland", "clue": "where chrome survivors roam", "interaction": "scavenge_ruins", "hidden_lore": "This dimension's sun collapsed mid-divorce between two physics constants. What's left is rust, raiders, and a Summer who, frankly, has never been happier."},
+    {"room": "A bustling alien marketplace, with strange creatures hawking even stranger wares.", "motif": "alien_market", "clue": "where bizarre goods are traded", "interaction": "haggle_vendor", "hidden_lore": "Everything for sale here was technically stolen from a dimension that hasn't invented it yet. The vendors call it 'pre-tail.' The lawyers call it 'unreachable, please stop asking.'",
+     "repeatable_action": {"cost_type": "credits", "cost_amount": 10, "flavor": "You try your luck haggling with a shifty-looking vendor for a 'mystery box'..."}},
+    {"room": "A room full of Plumbuses, each one unique and perfect in its own way.", "motif": "plumbus_factory", "clue": "where Plumbuses are born", "interaction": "examine_plumbus", "hidden_lore": "A Plumbus starts with a dinglebop, gets smoothed with a grumbo, and involves three steps no sober being has witnessed in full. Every home owns one. Nobody can explain why."},
+    {"room": "A dark, ominous chamber with a giant, glowing green portal throbbing at its center.", "motif": "dark_portal_chamber", "clue": "where realities converge", "interaction": "investigate_portal", "hidden_lore": "Portal fluid is concentrated 'somewhere else.' Drink it and you don't go anywhere. You just briefly become a rumor in fourteen dimensions at once. So: don't drink the portal fluid."},
+    {"room": "A sterile, white chamber, echoing with the sound of tiny footsteps.", "motif": "meeseeks_box_room", "clue": "where existence is pain", "interaction": "call_meeseeks", "hidden_lore": "A Meeseeks blinks into existence already in pain and stays that way until its one task is done. Rick files this under 'features.' The Meeseeks files it under 'grounds for a lawsuit.'"},
+    {"room": "A shimmering, iridescent cave where rare Mega Seeds grow, guarded by protective flora.", "motif": "mega_seed_cave", "clue": "where knowledge blossoms", "interaction": "harvest_seed", "hidden_lore": "Mega Seeds spike your IQ to galaxy-brain levels for about an hour. The comedown involves deep regret, one tearful confession, and a heartfelt apology to a houseplant."},
+    {"room": "A dimly lit, futuristic bar populated by various alien species, many of whom look menacing.", "motif": "blips_bar", "clue": "where alien drinks flow", "interaction": "order_drink", "hidden_lore": "Half the regulars here are wanted across nine galaxies; the other half are bounty hunters too drunk to collect. The bartender stays neutral and overcharges everyone with perfect fairness."},
+    {"room": "An interdimensional courthouse, where the legal system is a confusing, bureaucratic nightmare.", "motif": "interdimensional_court", "clue": "where justice is a gamble", "interaction": "bribe_official", "hidden_lore": "The Galactic Federation's legal code runs six billion statutes, all enforced by Gromflomites who would rather be anywhere else. Justice here is ninety percent paperwork and ten percent resentment."},
+    {"room": "A gigantic, pulsating brain-like entity occupies the center of the room, humming with psychic energy.", "motif": "glarblon_mind", "clue": "where thoughts echo", "interaction": "connect_mind", "hidden_lore": "This brain has read the private thoughts of every Rick in existence and reached one conclusion: they are all, without exception, exhausting. It would leave, but (it cannot stress this enough) it is a brain."},
+]
+# ===== The main story. Five chapters, you build the OMNI-CORE outta the dead Microverse Battery. Linear, because you can't handle choices. =====
+# Here's how every chapter loops, Morty, pay attention:
+# First I hand you a gadget, a clue, and an objective, because you'd be lost otherwise.
+# Then you go bug the chapter's character, give them my gadget, and they tip you off to some special move.
+# You do that move in the right room and out pops the find-item. Magic. No, science.
+# You haul the find-item back to me, I forge one OMNI-CORE part, and we roll to the next chapter.
+# Every story item is one-of-a-kind and gets eaten up as you go. You don't keep any of it,
+# and none of it touches crafting. Don't go hoarding, you little raccoon.
+GAME_OBJECTIVE = (
+    "Rick's ship runs on a Microverse Battery, a whole tiny universe he built to "
+    "generate power. The little guys inside finally unionized and walked off the job, "
+    "so the battery is dead and the ship is going nowhere. Rick is welding together a "
+    "replacement he calls the OMNI-CORE, and it needs five exotic parts scattered "
+    "across the multiverse. Here is the catch. Rick cannot step away from the workbench "
+    "until the core is finished, and half the dimensions holding those parts would put "
+    "a bullet in a Rick the second he showed his face. Nobody looks twice at a Morty. "
+    "So Rick presses his spare portal gun into your hands, points at the door, and "
+    "tells you to go fetch. Bring back all five parts. Do not lose the portal gun, and "
+    "try real hard not to die out there."
+)
+EXTENDED_QUESTS = [
+    dict(
+        act="Act I: Cold Open", title="A Shard of a Tiny Universe",
+        character="Zeep Xanflorp", giver_npc="Zeep Xanflorp",
+        persona="The smug little genius who built a Miniverse inside Rick's Microverse. Hates Rick. Respects no one.",
+        motif=3,  # rick's_garage, you tinker. Obviously.
+        rick_gift="Miniverse Peace Accord",
+        rick_send=("Rick burps. \"{pc}, my Microverse battery's a ghost town - the little "
+                   "ingrates organized. So we're building the OMNI-CORE. First part's a "
+                   "Tessellated Void Shard, and the only guy who makes 'em is that smug "
+                   "sub-atomic dweeb Zeep. Take him this peace accord so he doesn't vaporize "
+                   "you. He's somewhere out there - go.\""),
+        char_need=("Zeep squints at the accord. \"Rick wants MY help? Fine. There's a Void "
+                   "Shard wedged in a workbench in a junk-stinking garage dimension. TINKER "
+                   "with the workbench and it'll pop loose. Don't break it, errand boy.\""),
+        item="Tessellated Void Shard",
+        retrieve_story="You tinker at the cluttered workbench. A pocket of folded space-time clicks free: a Tessellated Void Shard!",
+        rick_install=("Rick snatches the shard. \"Heh. Zeep does decent work, don't tell him I "
+                      "said that.\" He welds it into a casing. OMNI-CORE: Core Casing installed."),
+        core_part="Core Casing",
+        riddle_extra="Zeep said a Void Shard is stuck in a workbench in a garage dimension. TINKER it loose.",
+        completion="Core Casing installed.",
+    ),
+    dict(
+        act="Act II: Old Friends", title="Salvage From the War",
+        character="Birdperson", giver_npc="Birdperson",
+        persona="Stoic war veteran, part cyborg now. Speaks in slow, heavy truths.",
+        motif=6,  # wasteland, you scavenge. Pick through the garbage like a Jerry.
+        rick_gift="Cybernetic Tune-Up Kit",
+        rick_send=("Rick: \"Next part needs a War-Forged Capacitor, and the only ones left are "
+                   "rusting on Birdperson's old battlefield. He's half-machine these days, so "
+                   "bring him this tune-up kit - call it a peace offering. Go find him.\""),
+        char_need=("Birdperson accepts the kit with a slow nod. \"In war, we buried our "
+                   "capacitors in the wasteland so the Federation could not take them. SCAVENGE "
+                   "the ruins. What you find belongs to the cause now.\""),
+        item="War-Forged Capacitor",
+        retrieve_story="You scavenge the scorched ruins. Under a fallen banner: a still-humming War-Forged Capacitor.",
+        rick_install=("Rick: \"Birdperson's old gear never fails. Unlike Birdperson's marriages.\" "
+                      "He clamps it in. OMNI-CORE: Surge Regulator installed."),
+        core_part="Surge Regulator",
+        riddle_extra="Birdperson buried War-Forged Capacitors in the wasteland ruins. SCAVENGE for one.",
+        completion="Surge Regulator installed.",
+    ),
+    dict(
+        act="Act III: Squanch Business", title="A Conduit Worth Haggling For",
+        character="Squanchy", giver_npc="Squanchy",
+        persona="A cat-like party animal who uses 'squanch' as every part of speech. Surprisingly dangerous.",
+        motif=7,  # alien_market, you haggle. Don't get ripped off.
+        rick_gift="Bottle of Eyehole Wine",
+        rick_send=("Rick: \"Third part's a Squanch-Grade Plasma Conduit - black-market stuff. "
+                   "Squanchy's got the connects, but he only deals after a drink. Bring him "
+                   "this bottle of the good Eyehole wine and don't squanch it up.\""),
+        char_need=("Squanchy sniffs the bottle and purrs. \"Ohh, you really know how to squanch a "
+                   "guy! Okay - there's a Plasma Conduit at the alien market, but that vendor's a "
+                   "crook. Go HAGGLE him down. Squanch him good.\""),
+        item="Squanch-Grade Plasma Conduit",
+        retrieve_story="You haggle the twitchy vendor into a corner. Defeated, he slaps a Squanch-Grade Plasma Conduit on the counter.",
+        rick_install=("Rick: \"Squanchy's sketchy, but his hardware's clean.\" He threads the "
+                      "conduit through the casing. OMNI-CORE: Plasma Conduit installed."),
+        core_part="Plasma Conduit",
+        riddle_extra="A Squanch-Grade Plasma Conduit is for sale at the alien market. HAGGLE the vendor down.",
+        completion="Plasma Conduit installed.",
+    ),
+    dict(
+        act="Act IV: Existence Is Pain", title="The Coil Only a Meeseeks Can Get",
+        character="Mr. Meeseeks", giver_npc="Mr. Meeseeks",
+        persona="A blue being summoned to do one task, then poof. Cheerful until the task drags on. 'Existence is pain!'",
+        motif=10,  # meeseeks_box_room, you call. Press the box, make a wish, try not to die.
+        rick_gift="Fresh Meeseeks Box Battery",
+        rick_send=("Rick: \"Part four is an Existential Flux Coil. Nasty to grab - so we let "
+                   "something disposable do it. There's a Meeseeks whose box died mid-task; "
+                   "he's been screaming for years. Bring him this battery, he'll owe you one.\""),
+        char_need=("'OOH, a fresh battery! I'm Mr. Meeseeks, LOOK AT ME!' He vibrates with relief. "
+                   "'You need a Flux Coil? Go to my box room and CALL a Meeseeks - he'll yank it "
+                   "out of the unstable zone so you don't have to. Existence is paaain!'"),
+        item="Existential Flux Coil",
+        retrieve_story="You CALL a Meeseeks. 'CAN DO!' It dives into the flux, screams gloriously, and hands you an Existential Flux Coil before poofing.",
+        rick_install=("Rick: \"Meeseeks: nature's disposable interns.\" He slots the coil. "
+                      "OMNI-CORE: Flux Stabilizer installed."),
+        core_part="Flux Stabilizer",
+        riddle_extra="Go to the Meeseeks box room and CALL a Meeseeks to fetch the Existential Flux Coil.",
+        completion="Flux Stabilizer installed.",
+    ),
+    dict(
+        act="Act V: The Smartest Morty", title="The Heart of the Curve",
+        character="President Morty", giver_npc="President Morty",
+        persona="Calm, calculating, chillingly intelligent. Smiles like he already planned this.",
+        motif=9,  # dark_portal_chamber, you investigate. *burp*
+        rick_gift="Encrypted Data-Stick",
+        rick_send=("Rick: \"Last part's a Curve-Stabilized Singularity, and the only one in "
+                   "reach is behind a dark portal President Morty controls. I don't trust that "
+                   "kid as far as I can throw a galaxy, but take him this data-stick and get me "
+                   "the part. Then we're DONE, {pc}.\""),
+        char_need=("President Morty pockets the data-stick, unsmiling. \"Rick always needs one "
+                   "last favor. The Singularity sits inside the dark portal chamber. INVESTIGATE "
+                   "the portal. Try not to fall in. I have plans that require you intact.\""),
+        item="Curve-Stabilized Singularity",
+        retrieve_story="You investigate the throbbing green portal. A pinprick of impossible density drifts out: the Curve-Stabilized Singularity.",
+        rick_install=("Rick seats the Singularity. The OMNI-CORE hums to life. \"That's it, {pc}. "
+                      "We did it. Infinite, guilt-free power forever.\""),
+        core_part="Singularity Heart",
+        riddle_extra="The Curve-Stabilized Singularity is inside the dark portal chamber. INVESTIGATE the portal.",
+        completion="Singularity Heart installed. OMNI-CORE complete.",
+    ),
+]
+# ===== Side quests. Two stages, optional, way funnier than the main plot. Each one pays out a crafting piece you can't get anywhere else. =====
+# Stage one: track down the one-of-a-kind KEY item. It's either on the floor or rotting inside some enemy you gotta kill.
+# Stage two: drag that key to the room I hinted at and do the action there. That
+# spits out the NEED item. Hand it to the NPC and they cough up a crafting piece
+# you literally cannot get any other way. Every craft needs one. No shortcuts, Morty.
+EXTENDED_SUBQUESTS = [
+    dict(npc="Jerry Smith", motif=4,  # sentient_furniture, you negotiate. With a couch. Don't ask.
+         key_item="Bag of Couch Snacks", need_item="World's Best Dad Mug",
+         reward_item="Confidence Capacitor",
+         lost_line=("Jerry sniffles. \"My sentient couch took my World's Best Dad Mug HOSTAGE. "
+                    "It says I don't 'earn' it. If you had some snacks you could maybe... negotiate with it?\""),
+         key_hint="Find a Bag of Couch Snacks, then go NEGOTIATE with the sentient furniture.",
+         retrieve_line="You toss the couch the snacks and NEGOTIATE. Satisfied, it burps up Jerry's World's Best Dad Mug.",
+         reward_line="Jerry weeps with joy and presses a Confidence Capacitor into your hands. 'I made this in a self-help seminar!'",
+         give_line="\"You found my World's Best Dad Mug?! That couch had NO right to take it. Hand it back, I'm begging you.\""),
+    dict(npc="Summer Smith", motif=2,  # blips_and_chitz, you play. Watch out for Roy.
+         key_item="Spare Arcade Token", need_item="Summer's Phone",
+         reward_item="Influencer Microchip",
+         lost_line=("Summer groans. \"My PHONE got eaten by that 'Roy' machine at Blips and Chitz. "
+                    "My whole follower count is in there. Get a token and PLAY it out, please.\""),
+         key_hint="Find a Spare Arcade Token, then PLAY the machine at Blips and Chitz.",
+         retrieve_line="You feed in the token and PLAY. You live a full life as Roy, die of old age, and the machine spits out Summer's Phone.",
+         reward_line="Summer screenshots you immediately. 'You're a legend.' She hands you an Influencer Microchip.",
+         give_line="\"You actually pulled my phone out of that thing?! Ugh, FINALLY. Hand it over before I lose any more followers.\""),
+    dict(npc="Beth Smith", motif=5,  # talking_tree_forest, you listen. Trees talk. Deal with it.
+         key_item="Tabloid Datapad", need_item="Stable-Grade Alien Herb",
+         reward_item="Surgical Nanite Vial",
+         lost_line=("Beth, scrubbing in: \"I need a Stable-Grade Alien Herb for horse surgery. The "
+                    "gossiping trees know where it grows but they only trade for fresh gossip.\""),
+         key_hint="Find a Tabloid Datapad, then LISTEN to the talking trees and trade them the gossip.",
+         retrieve_line="You LISTEN, then dish the tabloid gossip. Scandalized and delighted, the trees drop a Stable-Grade Alien Herb.",
+         reward_line="Beth pockets the herb. 'The horse will live. Probably.' She gives you a Surgical Nanite Vial.",
+         give_line="\"Is that the Stable-Grade Alien Herb? Oh thank god, that horse is not going to operate on itself. Hand it over.\""),
+    dict(npc="Scary Terry", motif=14,  # glarblon_mind, you connect. Telepathy, basically.
+         key_item="Box of Sleeping Pills", need_item="Terry's Dream Knife",
+         reward_item="Nightmare Fuel Cell",
+         lost_line=("\"Yo, I lost my Dream Knife inside some nerd's nightmare, bitch! Can't scare "
+                    "nobody without it. Knock yourself out and go get it, bitch!\""),
+         key_hint="Find a Box of Sleeping Pills, then CONNECT to the dreaming mind to enter the nightmare.",
+         retrieve_line="You take the pills and CONNECT to the sleeping mind. Inside the nightmare you pry loose Terry's Dream Knife.",
+         reward_line="\"AY, my knife! You're alright, bitch.\" Terry slips you a Nightmare Fuel Cell. \"Bitch.\"",
+         give_line="\"MY DREAM KNIFE! You beautiful bastard, hand it here, I got people to scare, bitch!\""),
+    dict(npc="Mr. Poopybutthole", motif=12,  # blips_bar, you order. A drink. From a bar. Genius design.
+         key_item="Wad of Schmeckles", need_item="Lucky Shot Glass",
+         reward_item="Lucky Charm Resonator",
+         lost_line=("\"Ooo-wee! The bartender's holding my lucky shot glass till I clear my tab. "
+                    "I'm a bit short. Cover it and it's yours to grab, ya hear?\""),
+         key_hint="Find a Wad of Schmeckles, then ORDER at the bar and settle the tab.",
+         retrieve_line="You ORDER a round and slap down the Schmeckles. The bartender slides over Mr. Poopybutthole's Lucky Shot Glass.",
+         reward_line="\"Ooo-wee, you're a good one!\" He hands you a Lucky Charm Resonator. \"Don't spend my luck all at once!\"",
+         give_line="\"Ooo-wee, my Lucky Shot Glass! You sprung it loose? Hand it over, you wonderful soul, ya hear?\""),
+]
+# ===== Stats. HP, Charge, all the numbers that decide if you live. =====
+EXPANDED_RACES = [
+    {"name": "Force-Field Gauntlet", "hp_bonus": 5, "charge_bonus": -2, "special": "Rick's wrist-mounted shield projector. Soaks punishment for +5 Max HP, but the field constantly sips your reserves (-2 Charge). The sturdiest loadout in the garage."},
+    {"name": "Laser Pistol", "hp_bonus": 3, "charge_bonus": 1, "special": "Rick's go-to sidearm. +2 Damage, plus +3 Max HP and +1 Charge. Point, shoot, move on."},
+    {"name": "Recon Visor", "hp_bonus": 2, "charge_bonus": 2, "special": "A heads-up scanner with light plating. +1 Armor and a Scan that paints enemies in adjacent rooms. +2 Max HP / +2 Charge."},
+    {"name": "Phoenix Implant", "hp_bonus": 4, "charge_bonus": -1, "special": "Salvaged Operation Phoenix tech. +4 Max HP and quietly knits you back together: it regenerates 1 HP every 5 moves. A little power-hungry (-1 Charge)."},
+    {"name": "Neutrino Bomb", "hp_bonus": 0, "charge_bonus": 5, "special": "'In and out, twenty-minute adventure.' The most Charge of any loadout (+5) and a devastating charged blast in combat."},
+    {"name": "Freeze Ray", "hp_bonus": 1, "charge_bonus": 3, "special": "Rick's freeze gun. A clean, balanced energy weapon: +3 Charge and +1 Max HP."},
+    {"name": "Brainalyzer", "hp_bonus": 2, "charge_bonus": 0, "special": "A brain-scrambling headset. +1 Armor and a 10% chance to scramble an enemy's focus so its next attack misses. +2 Max HP."},
+    {"name": "Kalaxian Crystals", "hp_bonus": -5, "charge_bonus": 0, "special": "Rick's favorite contraband. A reckless high: the lowest Max HP of any loadout (-5) and no special tricks. Pure, ill-advised vibes."},
+]
+EXPANDED_CLASSES = [
+    {"name": "Dark Matter Cell", "hp_bonus": 0, "charge_bonus": 6, "special": "A volatile concentrated-dark-matter core: the most Charge of any attachment and the lowest HP, a glass cannon. Supercharges your Healing Serums and Energy Cells (+5 each), and its sensor pings nearby Quest-Rooms & the Pawn Shop (Q/$ shown dimmed)."},
+    {"name": "Holo-Mapper", "hp_bonus": 2, "charge_bonus": 1, "special": "Projects the terrain ahead: SENSES nearby Items (I shown dimmed) and a 20% chance to reveal an adjacent room on entry. Well-rounded."},
+    {"name": "Universal Translator", "hp_bonus": 1, "charge_bonus": 3, "special": "Smooths every conversation: SENSES nearby Main-Quest NPCs (N shown dimmed). Talking sometimes turns up extra intel or a small HP/Charge boost."},
+    {"name": "Targeting Chip", "hp_bonus": 3, "charge_bonus": 2, "special": "A combat-analysis implant: +1 Damage, +1 Armor, and DOUBLE XP from every kill, so you level up fastest. No radar, so you fight blind but grow strong."},
+    {"name": "Fabricator Drone", "hp_bonus": 2, "charge_bonus": 4, "special": "A pocket builder-bot: SENSES nearby Side-Quest NPCs (S shown dimmed), the folks who hand you crafting parts. It also has a 25% chance to build an item without using up your materials."},
+    {"name": "Parasite Scanner", "hp_bonus": 4, "charge_bonus": 0, "special": "Sniffs out infestations: SENSES nearby Enemies (E shown dimmed) and deals +2 Damage. Tough, but low on Charge."},
+    {"name": "Combat Exo-Rig", "hp_bonus": 6, "charge_bonus": -2, "special": "Brute-force exo-augments: +4 Damage and +6 Max HP, the toughest hitter in the garage. No radar and low Charge, just pure blind melee."},
+    {"name": "Portal Coil", "hp_bonus": 0, "charge_bonus": 5, "special": "A spare portal-gun coil: +5 Charge, and it powers a Portal Gun (Replica) for free, so portal_jump to any visited room costs you no Charge. No radar; raw mobility is your edge."},
+]
+# Every class gets a passive RADAR. It paints ONE kind of marker, dimmed, for rooms you haven't
+# walked into yet, but only within this Manhattan radius. Classes I left off this list get no radar,
+# because they traded the map smarts for raw muscle or utility. Can't have everything, Morty.
+CLASS_SENSE = {
+    "Dark Matter Cell":     ("objective", 3),  # Quest rooms and the pawn shop (Q and the dollar sign).
+    "Holo-Mapper":          ("items", 3),       # Loose items (I).
+    "Universal Translator": ("main_npc", 3),    # Main-quest NPCs (N).
+    "Fabricator Drone":     ("side_npc", 3),    # Side-quest NPCs (S).
+    "Parasite Scanner":     ("enemy", 3),       # Enemies (E). The stabby ones.
+}
+# These are the dimmed radar colors. Faded versions of the normal markers so a sensed-but-unvisited
+# room reads as 'I detect something there, haven't been yet.' Subtle. Like me.
+DIM_SENSE_COLORS = {
+    "dim_item": "#7A4A86", "dim_monster": "#8A3A3A", "dim_quest": "#2C7A4A",
+    "dim_npc": "#8A7400", "dim_subnpc": "#2A6A8A", "dim_shop": "#8A5A00",
+}
+# ===== Monsters. Everything in the multiverse that wants you dead. =====
+MONSTERS = [
+    Monster(
+        "Gromflomite Guard", 15, 15, 5,
+        ["Federation Credits", "Energy Cell", "Healing Serum"],
+        "A standard Galactic Federation soldier, heavily armed and bureaucratic.",
+        special_attack_chance=0.25,
+        special_attack_name="Suppressing Fire"
+    ),
+    Monster("Sentient Furniture", 20, 20, 6, ["Upholstery Scrap", "Energy Cell"], "A living piece of furniture, easily offended and surprisingly durable."),
+    Monster(
+        "Zeep's Microverse Sentry", 25, 25, 8,
+        ["Microverse Battery", "Healing Serum"],
+        "A hulking security construct Zeep built to guard his microverse, all blades and contempt.",
+        special_attack_chance=0.0,
+        special_attack_name="",
+        is_boss=True
+    ),
+    Monster("Death Stalker", 18, 18, 7, ["Wasteland Metal", "Energy Cell"], "A hulking, mutated beast from the Wasteland Dimension, always hunting."),
+    Monster("Council of Ricks Drone", 12, 12, 4, ["Drone Circuitry", "Healing Serum"], "An automated defense unit, programmed to protect the Council at all costs."),
+    Monster("Mr. Frundles", 30, 30, 9, ["Parasitic Spore", "Mimic Essence", "Energy Cell"], "A highly infectious creature that spreads joy and horror simultaneously."),
+    Monster(
+        "Giant Head (Cromulon)", 35, 35, 10,
+        ["Interdimensional Song", "Cosmic Dust", "Healing Serum"],
+        "A massive, judgmental head demanding to know 'WHAT YOU GOT!'",
+        special_attack_chance=0.3,
+        special_attack_name="SHOW ME WHAT YOU GOT",
+        is_boss=True
+    ),
+    Monster("Morty Jr.", 10, 10, 3, ["Gazorpian Genes", "Youthful Rage", "Energy Cell"], "A hot-headed Gazorpazorpian, prone to lashing out when provoked."),
+    Monster("Tammy Gueterman", 22, 22, 7, ["Federation Agent ID", "Birdperson Feather", "Healing Serum"], "A ruthless Federation agent, and a tragic figure in love with Birdperson."),
+    Monster(
+        "Mr. Nimbus", 28, 28, 8,
+        ["Ocean's Trident", "King's Crown", "Energy Cell"],
+        "He is Mr. Nimbus! He controls the police!",
+        special_attack_chance=0.3,
+        special_attack_name="Summon Police"
+    ),
+    Monster("Planetina's Minion", 16, 16, 5, ["Eco-Logic Circuit", "Elemental Shard", "Energy Cell"], "A small, environmentally-conscious but fierce defender of Planetina."),
+    Monster("Butter Robot's Vengeance", 8, 8, 3, ["Butter Grease", "Existential Dread", "Healing Serum"], "A rogue Butter Robot, fueled by a purpose of pure spite."),
+    Monster("Gotron Drone", 17, 17, 6, ["Gotron Component", "Mecha-Servo", "Energy Cell"], "A modular robot designed for combining into a giant mech, but still dangerous alone."),
+    Monster("Unity (Possessed Host)", 28, 28, 8, ["Hive Mind Fragment", "Controlled Will", "Energy Cell"], "A member of Unity's collective, acting against its true will."),
+    Monster(
+        "Fart (Cromulon Form)", 40, 40, 12,
+        ["Gas Cloud Essence", "Telepathic Gem", "Energy Cell"],
+        "A gaseous, telepathic being from another dimension, capable of mass destruction.",
+        special_attack_chance=0.4,
+        special_attack_name="Telepathic Assault",
+        is_boss=True
+    ),
+    Monster("Conspiracy Morty", 20, 20, 6, ["Conspiracy Theory", "Tin Foil Hat", "Healing Serum"], "A Morty who knows too much, always muttering about the truth behind the Ricks."),
+]
+ACHIEVEMENTS = [
+    Achievement("Dimension Hopper", "Complete all main quests", "Permanent Portal Fuel (Portal Jump has no charge cost)", "player.quest_idx >= len(EXTENDED_QUESTS)"),
+    Achievement("Side Quest Morty", "Complete all side quests", "Morty Jr.'s Respect (+10% XP from all sources)", "len(player.subquest_ack) >= len(EXTENDED_SUBQUESTS)"),
+    Achievement("Interdimensional Explorer", "Visit every room on the map", "+10 Max HP", "len(player.visited) >= total_rooms"),
+    Achievement("Federation Fighter", "Defeat 15 monsters", "+5 Damage Bonus", "player.monsters_defeated >= 15"),
+    Achievement("Master Crafter Rick", "Craft 3 unique items", "New crafting recipes unlocked (all recipes become available)", "player.items_crafted >= 3"),
+    Achievement("Galaxy Brain (C-137)", "Uncover every scrap of intel hidden across the dimensions", "+10 Max Charge", "len(player.lore_fragments) >= app.total_lore_fragments_count"),
+    Achievement(
+        "Collector of Oddities",
+        "Collect 25 items",
+        "Strange Hoarder’s Luck (+a bit more interesting loot overall).",
+        "player.total_items_collected >= 25"
+    ),
+    Achievement("Schmeckle Millionaire", "Have 50 Federation Credits at once", "Permanent Price Reduction (gain 2 extra credits for every 10 credits found)", "player.federation_credits >= 50"),
+    Achievement("Survived a Jerry", "Complete the game without dying", "Jerry-Proof Vest (+1 Armor)", "player.deaths == 0 and game_complete"),
+    Achievement("Show Me What You Got!", "Defeat a Cromulon", "Cromulon's Blessing (gain 5 XP)", "cromulon_defeated_count >= 1"),
+    Achievement("Plumbus Pro", "Collect a Plumbus", "Plumbus Mastery (Healing Serums heal for 5 more HP)", "player.plumbuses_collected >= 1 or 'Plumbus' in player.inventory or 'Plumbus' in player.crafting_materials or 'Plumbus Repair Kit' in player.inventory"),
+    Achievement("Mega Seed Master", "Use 1 Mega Seed", "Enhanced Intelligence (+3 Max Charge)", "mega_seeds_used >= 1"),
+]
+CRAFTING_RECIPES = {
+    # Every recipe wants exactly ONE unique side-quest reward piece, and you only pry those loose
+    # by finishing the matching side quest. On top of that it wants materials that exist as a
+    # single copy out on the map or stuffed in some enemy. So yeah, you actually have to
+    # hunt the whole map AND do side quests to build anything. I don't do participation trophies.
+    "Portal Gun (Replica)": {
+        "materials": ["Confidence Capacitor", "Rickium Alloy", "Tiny Capacitor"],
+        "effect": "Allows teleportation to any visited room (costs 5 Charge). Command: portal_jump <X> <Y>",
+        "description": "A functional, albeit slightly unstable, replica of Rick's iconic device.",
+        "key_piece": "Confidence Capacitor",
+    },
+    "Butter Robot": {
+        "materials": ["Influencer Microchip", "Scavenged Parts", "Mind Thread"],
+        "effect": "A loyal companion! +2 Damage Bonus while carried.",
+        "description": "A small, subservient robot, whose sole purpose is to pass butter.",
+        "key_piece": "Influencer Microchip",
+    },
+    "Interdimensional Goggles": {
+        "materials": ["Surgical Nanite Vial", "Cognitive Fabric", "Neural Processor"],
+        "effect": "Reveals all NPCs, Monsters, and Quest Motifs on the entire map.",
+        "description": "See beyond the veil of your dimension, into infinite possibilities.",
+        "key_piece": "Surgical Nanite Vial",
+    },
+    "Mega Seed Injector": {
+        "materials": ["Nightmare Fuel Cell", "Mega Seed", "Tiny Capacitor"],
+        "effect": "Permanently boosts Max Charge by 10, but causes temporary nausea (lose 5 HP).",
+        "description": "A device to safely administer Mega Seeds for maximum intellectual gain.",
+        "key_piece": "Nightmare Fuel Cell",
+    },
+    "Plumbus Repair Kit": {
+        "materials": ["Lucky Charm Resonator", "Plumbus", "Scavenged Parts"],
+        "effect": "Fully restores all HP and Charge (single use).",
+        "description": "Everything you need to get your Plumbus back to optimal 'grumbo' status.",
+        "key_piece": "Lucky Charm Resonator",
+    },
+}
+# These are the materials that should exist as exactly one copy somewhere out there, floor or
+# enemy loot. Side-quest reward pieces are NOT in here, the NPCs hand those out, keep up.
+# I build this list by walking every recipe and dropping each non-key material once PER recipe that wants it,
+# so a material two recipes share gets placed twice. That's the trick that makes all five craftable. *burp*
+CRAFT_MATERIALS_SINGLE = [
+    m for rdata in CRAFTING_RECIPES.values()
+    for m in rdata["materials"] if m != rdata.get("key_piece")
+]
+# Reward pieces the side-quest NPCs hand you. I use these to gate crafting and fill the journal.
+SIDE_REWARD_PIECES = [s["reward_item"] for s in EXTENDED_SUBQUESTS]
+# The stage-one key items, each one dropped exactly once into the world.
+SIDE_KEY_ITEMS = [s["key_item"] for s in EXTENDED_SUBQUESTS]
+
+def _motif_verb(motif_idx):
+    return EXTENDED_MOTIFS[motif_idx].get("interaction", "examine").split("_")[0]
+
+def build_main_steps():
+    """Flatten the chapters into an ordered list of 4 steps each:
+    talk Rick -> deliver Rick's gadget to the chapter character -> retrieve the
+    find-item via special action -> bring the find-item to Rick."""
+    steps = []
+    for ci, ch in enumerate(EXTENDED_QUESTS):
+        steps.append(dict(kind="talk_rick", ci=ci))
+        steps.append(dict(kind="deliver_char", ci=ci, item=ch["rick_gift"], to=ch["character"]))
+        steps.append(dict(kind="retrieve", ci=ci, item=ch["item"], motif=ch["motif"]))
+        steps.append(dict(kind="deliver_rick", ci=ci, item=ch["item"]))
+    return steps
+
+MAIN_STEPS = build_main_steps()
+STEPS_PER_CHAPTER = 4
+COMMAND_VERBS = [
+    "north", "south", "east", "west", "n", "s", "e", "w",
+    "talk", "hint", "quest", "look", "examine", "l",
+    "get", "give", "use", "inventory", "inv", "i",
+    "scan", "sense", "craft", "stats", "status", "search",
+    "attack", "flee", "plasma_blast", "mind_wipe", "echo_scream", "show_me_what_you_got",
+    "list", "buy", "sell",  # Shop commands. Buying and selling, the capitalist part.
+    "eat", "observe", "play", "tinker", "negotiate", "listen",
+    "scavenge", "haggle", "investigate", "call",
+    "harvest", "order", "bribe", "connect",
+    "watch", "bite", "workbench", "bench", "couch", "rummage", "loot", "barter", "deal", "inspect", "study", "probe", "analyze", "summon", "pick", "pluck", "drink", "sip", "payoff", "grease", "sync", "link",
+    "map", "journal", "achievements", "portal_jump",
+    "save", "load", "help",
+]
+# You type combat moves straight, no 'cast' nonsense. These aliases just let your sloppy
+# friendly spellings through and snap them back to the real underscored command. You're welcome.
+COMBAT_MOVES = ["plasma_blast", "mind_wipe", "echo_scream", "show_me_what_you_got"]
+DIRECT_ALIAS = {
+    "scream": "echo_scream", "echoscream": "echo_scream", "echo_scream": "echo_scream",
+    "plasma": "plasma_blast", "plasmablast": "plasma_blast", "wrist_plasma": "plasma_blast", "blaster": "plasma_blast",
+    "mindwipe": "mind_wipe", "mindblower": "mind_wipe", "mind_blower": "mind_wipe", "mind_pulse": "mind_wipe",
+    "showmewhatyougot": "show_me_what_you_got",
+}
+DIFFICULTY_MODIFIERS = {
+    DifficultyLevel.EASY: {"monster_hp_mult": 0.7, "monster_damage_mult": 0.8, "hint_clarity": 1.5, "starting_hp_bonus": 10, "starting_charge_bonus": 5},
+    DifficultyLevel.NORMAL: {"monster_hp_mult": 1.0, "monster_damage_mult": 1.0, "hint_clarity": 1.0, "starting_hp_bonus": 0, "starting_charge_bonus": 0},
+    DifficultyLevel.HARD: {"monster_hp_mult": 1.3, "monster_damage_mult": 1.2, "hint_clarity": 0.7, "starting_hp_bonus": -5, "starting_charge_bonus": -2},
+    DifficultyLevel.NIGHTMARE: {"monster_hp_mult": 1.8, "monster_damage_mult": 1.5, "hint_clarity": 0.5, "starting_hp_bonus": -10, "starting_charge_bonus": -5}
+}
+ATTACK_COST = {
+    "plasma_blast":         {"hp": 0, "charge": 4, "xp": 0},
+    "mind_wipe":            {"hp": 0, "charge": 5, "xp": 0},
+    "portal_jump":          {"hp": 0, "charge": 10, "xp": 0},
+    "echo_scream":          {"hp": 2, "charge": 0, "xp": 0},
+    "show_me_what_you_got": {"hp": 0, "charge": 7, "xp": 0},
+}
+# A basic swing always lands for at least this much, before any gear or level bonus. I set a floor
+# so combat isn't you chipping away one measly point of damage a turn like some sad little gnat.
+PLAYER_BASE_DAMAGE = 5
+class NPC:
+    def __init__(self, name, quest_idx, motif_idx, hand_to_giver, is_subquest=False, subqdata=None, is_rick=False, sub_idx=None, is_shop=False):
+        self.name          = name
+        self.quest_idx     = quest_idx
+        self.motif_idx     = motif_idx
+        self.hand_to_giver = hand_to_giver
+        self.is_subquest   = is_subquest
+        self.subqdata      = subqdata
+        self.is_rick       = is_rick
+        self.sub_idx       = sub_idx
+        self.is_shop       = is_shop
+class Player:
+    def __init__(self, name=None, race=None, pclass=None, difficulty=DifficultyLevel.NORMAL):
+        self.name       = name or "Morty"
+        self.race       = race or "Force-Field Gauntlet"
+        self.pclass     = pclass or "Holo-Mapper"
+        self.difficulty = difficulty
+        race_data  = next((r for r in EXPANDED_RACES if r["name"] == self.race),  EXPANDED_RACES[0])
+        class_data = next((c for c in EXPANDED_CLASSES if c["name"] == self.pclass), EXPANDED_CLASSES[0])
+        diff_mod  = DIFFICULTY_MODIFIERS[difficulty]
+        base_hp   = 20 + random.randint(0, 5) + race_data["hp_bonus"] + class_data["hp_bonus"] + diff_mod["starting_hp_bonus"]
+        base_charge = 15 + random.randint(0, 5) + race_data["charge_bonus"] + class_data["charge_bonus"] + diff_mod["starting_charge_bonus"]
+        self.x, self.y   = 1, 1
+        self.last_room   = (1, 1)
+        self.inventory   = []
+        self.crafting_materials = []
+        self.quest_idx   = 0
+        self.step_idx    = 0          # Index into MAIN_STEPS. Four steps per chapter. Count 'em, Morty.
+        self.objective_shown = False  # I, Rick, lay out the grand objective exactly once. Listen the first time.
+        self.quest_await = set()
+        self.quest_heard  = set()
+        self.subquest_heard = set()
+        self.subquest_met   = set()
+        self.await_item  = None
+        self.await_motif = None
+        self.await_verb  = None
+        self.await_npc   = None
+        self.subquest_ack = set()
+        self.visited        = set()
+        self.teleport_locations = {(1,1)}
+        self.max_hp   = max(1, base_hp)
+        self.hp       = self.max_hp
+        self.charge     = max(1, base_charge)
+        self.max_charge = self.charge
+        self.xp    = 0
+        self.level = 1
+        self.moves_taken            = 0
+        self.monsters_defeated      = 0
+        self.monsters_killed        = 0
+        self.items_crafted          = 0
+        self.motif_puzzles_solved   = 0
+        self.lore_fragments         = []
+        self.total_items_collected  = 0
+        self.deaths                 = 0
+        self.achievements           = []
+        self.special_abilities      = []
+        self.federation_credits     = 0
+        self.cromulon_defeated_count = 0
+        self.plumbuses_collected    = 0
+        self.mega_seeds_used        = 0
+        self.xp_bonus_percent       = 0
+        self.current_combat_turn    = 0
+        self.meeseeks_attack_doubled = False
+        self.stunned_for_next_turn = False  # For stunning Mr. Nimbus. He runs the police, you know.
+        self.base_armor = 0
+        self.base_damage_bonus = 0
+        self.base_armor += race_data.get("armor_bonus", 0)
+        self.base_damage_bonus += race_data.get("damage_bonus", 0)
+        self.base_armor += class_data.get("armor_bonus", 0)
+        self.base_damage_bonus += class_data.get("damage_bonus", 0)
+        if self.race == "Recon Visor": self.base_armor += 1
+        if self.race == "Laser Pistol": self.base_damage_bonus += 2
+        if self.race == "Brainalyzer": self.base_armor += 1
+        if self.pclass == "Targeting Chip": self.base_damage_bonus += 1; self.base_armor += 1
+        if self.pclass == "Parasite Scanner": self.base_damage_bonus += 2
+        if self.pclass == "Combat Exo-Rig": self.base_damage_bonus += 4
+        self.item_armor_bonus = 0; self.item_damage_bonus = 0
+        self.armor = self.base_armor + self.item_armor_bonus
+        self.damage_bonus = self.base_damage_bonus + self.item_damage_bonus
+        self.portal_gun_no_charge_cost = False; self.xp_bonus_active = False; self.plumbus_pro_active = False; self.unity_mind_shield_active = False
+        if self.pclass == "Targeting Chip": self.xp_bonus_active = True; self.xp_bonus_percent += 100
+        if self.pclass == "Portal Coil": self.portal_gun_no_charge_cost = True
+        if self.race == "Recon Visor": self.special_abilities.append("Basic Room Scan")
+        elif self.race == "Phoenix Implant": self.special_abilities.append("Passive HP Regen (1 HP / 5 moves)")
+        elif self.race == "Brainalyzer": self.special_abilities.append("Disorient Enemy (10% chance to miss)")
+        self.special_abilities.append(race_data["special"]); self.special_abilities.append(class_data["special"])
+def make_spine(width, height, nodes):
+    xs = [max(1, min(width, 1 + i * (width // max(1, nodes-1)))) for i in range(nodes)]
+    ys = [max(1, min(height, 1 + i * (height // max(1, nodes-1)))) for i in range(nodes)]
+    return list(dict.fromkeys(list(zip(xs, ys))))
+def generate_enhanced_game(width, height, difficulty=DifficultyLevel.NORMAL,
+                           quests=EXTENDED_QUESTS, motifs=EXTENDED_MOTIFS,
+                           subquests=EXTENDED_SUBQUESTS):
+    world = {}
+    rooms = []
+    starting_descriptions = [
+        "A pocket dimension filled with colorful, bouncing goo-creatures.",
+        "The infinite void between dimensions, strangely peaceful.",
+        "A dilapidated alien diner, serving questionable interdimensional cuisine.",
+        "A hallway in the Citadel of Ricks, plastered with propaganda posters.",
+        "A forgotten corner of Blips and Chitz, smelling faintly of stale pizza.",
+        "A toxic waste dump dimension, glowing with ominous green liquid.",
+        "The interior of a giant alien's stomach, surprisingly spacious.",
+        "A dimension where time flows backward.",
+        "A sterile Galactic Federation outpost.",
+        "A room filled with various, brightly colored test tubes and beakers.",
+        "The inside of a colossal, living space whale.",
+        "A cavern formed entirely from crystallized feelings and memories.",
+        "A futuristic apartment complex.",
+        "A dimension where everything is made of sentient, talking spaghetti.",
+        "A desolate alien battlefield.",
+        "A lush, overgrown jungle planet.",
+        "The interior of a giant, bored Glarblon's mind.",
+        "A dimension where gravity constantly shifts.",
+        "A quiet, abandoned spaceship hangar.",
+        "A bizarre art gallery.",
+        "A bustling space station market.",
+        "A room where sound itself takes on physical form.",
+        "The interior of a giant, sentient crystal.",
+        "A desolate asteroid field.",
+        "A dimension entirely composed of fluffy, dangerous clouds.",
+        "A futuristic classroom.",
+        "A labyrinthine sewer system.",
+        "A hidden bunker.",
+        "A realm where every surface is a mirror.",
+        "A dimension of pure silence.",
+        "A giant vat of liquid.",
+        "A waiting room in an interdimensional DMV.",
+        "A 'Microverse Battery' floating endlessly.",
+        "A dimension where all currency is sentient.",
+        "A desolate planet, populated only by giant, depressed worms.",
+        "The inside of a colossal, malfunctioning 'Meeseeks Box' factory.",
+        "A museum of forgotten interdimensional technology.",
+        "A planet where the trees grow upside down.",
+        "A cosmic library where books float freely.",
+        "A dimension made entirely of candy.",
+        "A sterile operating theater.",
+        "The headquarters of the 'Evil Morty Fan Club'.",
+        "A giant game of interdimensional chess.",
+        "A gas station on an alien highway.",
+        "A dimension where every animal is a cat.",
+        "A collection of abandoned 'Gotron' parts.",
+        "A room filled with portals to other dimensions.",
+        "The remnants of a failed 'Jerry Daycare' experiment.",
+        "A factory producing 'Eyeholes'.",
+        "A dimension where music is a physical force.",
+        "An alien zoo.",
+        "A giant, pulsating brain-like entity hums softly.",
+        "A surreal landscape of floating islands.",
+        "The interior of a living spaceship.",
+        "A courtroom where the judge is a giant, angry pickle.",
+        "A dimension where everything is tiny.",
+        "A colossal, decaying space station.",
+        "A bizarre carnival.",
+        "A hidden laboratory.",
+        "A dimension where every living being is a 'Mr. Poopybutthole'."
+    ]
+    for y in range(1, height + 1):
+        for x in range(1, width + 1):
+            world[(x, y)] = {
+                "name": f"Room ({x},{y})",
+                "desc": random.choice(starting_descriptions),
+                "items": [],
+                "npc": None,
+                "monster": None,
+                "quest_idx": None,
+                "motif": None,
+                "visited": False,
+                "subquest_done": False,
+                "lore_discovered": False,
+                "special_interactions": [],
+                "hidden_passages": [],
+                "theme": None
+            }
+            rooms.append((x, y))
+    used_rooms = {(1, 1)}
+    # The Hub. Home base. Where I am.
+    world[(1, 1)]["name"] = "Citadel Hub"
+    world[(1, 1)]["desc"] = "The Citadel Hub: neon, noise, and a thousand arguments. Ricks and Mortys swarm the plaza."
+    world[(1, 1)]["theme"] = "hub"
+    glexo_pos = None  # The pawn shop's scattered out on the map somewhere, not bolted to the hub. Go find it.
+    quest_rooms = []        # The rooms where the main-story special actions happen.
+    quest_paths = []
+    npc_rooms = []          # Every NPC tile. Me, the chapter characters, the side NPCs, Glexo, the whole circus.
+    placed_main_npcs = {}   # Maps a name to a position. Name in, coordinates out.
+
+    def m_dist(a, b):
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+    def spread_pick(candidates, avoid, k):
+        """Pick k well-separated rooms, far from each other and from the `avoid`
+        anchors. Farthest-point sampling, but chooses randomly among the best
+        options so layouts stay spread yet differ from game to game."""
+        pool = list(candidates); refs = list(avoid); chosen = []
+        for _ in range(k):
+            if not pool:
+                break
+            scored = [(min((m_dist(p, r) for r in refs), default=10**9), p) for p in pool]
+            best = max(s2 for s2, _ in scored)
+            good = [p for s2, p in scored if s2 >= best * 0.75]
+            pick = random.choice(good) if good else pool[0]
+            chosen.append(pick); pool.remove(pick); refs.append(pick)
+        return chosen
+
+    # I live at the Citadel Hub, which is also where you start, so you can hit me up right away
+    # and keep crawling back to me between chapters. Don't get clingy.
+    world[(1, 1)]["npc"] = NPC("Rick C-137", -2, None, False, is_rick=True)
+    world[(1, 1)]["desc"] += " Rick C-137 is here, hunched over a half-built contraption, muttering and drinking."
+    npc_rooms.append((1, 1)); placed_main_npcs["Rick C-137"] = (1, 1)
+
+    # All the special rooms (chapter characters, story rooms, side NPCs, side rooms, AND the pawn
+    # shop) get dropped in one nicely-spread pass, then I assign their roles in a SHUFFLED order.
+    # One pass keeps everything spread out and interleaved instead of clumped, and a clearance
+    # ring keeps your starting area clear so you don't get jumped the second you spawn.
+    SPAWN_CLEAR = 3  # Nothing spawns closer than this (Manhattan) to the hub. Breathing room.
+    nq = len(quests); ns = len(subquests)
+    special_candidates = [
+        r for r in rooms
+        if r not in used_rooms and world[r]["npc"] is None
+        and m_dist(r, (1, 1)) >= SPAWN_CLEAR
+    ]
+    # That extra +1 slot on the end? Reserved for the pawn shop. Planned ahead, like a genius.
+    special_positions = spread_pick(special_candidates, [(1, 1)], 2 * nq + 2 * ns + 1)
+    glexo_pos = special_positions.pop() if special_positions else None
+    random.shuffle(special_positions)
+    # Deal the shuffled spread positions out across the four roles. Like cards, Morty.
+    char_positions = special_positions[0:nq]
+    motif_positions = special_positions[nq:2 * nq]
+    sub_positions = special_positions[2 * nq:2 * nq + ns]
+    side_motif_positions = special_positions[2 * nq + ns:2 * nq + 2 * ns]
+
+    # The pawn shop, run by Glexo Slimslom, sits somewhere out in the multiverse, NOT glued
+    # to your spawn square. Make him work for the foot traffic.
+    if glexo_pos is not None:
+        world[glexo_pos]["name"] = "The Pawn Shop at the End of Despair"
+        world[glexo_pos]["desc"] = (
+            "A grimy, cluttered stall is crammed into the alley. A four-eyed alien, Glexo Slimslom, "
+            "polishes a blaster rifle with a greasy rag. He looks up, his gaze lingering on your pockets. "
+            "The air smells of ozone and desperation."
+        )
+        world[glexo_pos]["npc"] = NPC(name="Glexo Slimslom", quest_idx=-1, motif_idx=None,
+                                      hand_to_giver=False, is_subquest=True, is_shop=True)
+        used_rooms.add(glexo_pos); npc_rooms.append(glexo_pos)
+
+    # The chapter characters go here.
+    for ci, Q in enumerate(quests):
+        if ci >= len(char_positions): break
+        pos = char_positions[ci]
+        world[pos]["npc"] = NPC(Q["character"], ci, Q["motif"], False)
+        world[pos]["desc"] += f" {Q['character']} is here."
+        placed_main_npcs[Q["character"]] = pos
+        npc_rooms.append(pos); used_rooms.add(pos)
+
+    # The main-story special-action rooms.
+    for ci, Q in enumerate(quests):
+        if ci >= len(motif_positions): break
+        pos = motif_positions[ci]; motif_idx = Q["motif"]; motif_data = motifs[motif_idx]
+        world[pos]["desc"] = f"{Q['title']}: {motif_data['room']}"
+        world[pos]["motif"] = motif_idx
+        world[pos]["quest_idx"] = ci
+        world[pos]["special_interactions"] = [motif_data.get("interaction", "examine")]
+        if "hidden_lore" in motif_data:
+            world[pos]["hidden_lore"] = motif_data["hidden_lore"]
+        world[pos]["hidden_item"] = Q["item"]; world[pos]["quest_item_revealed"] = False
+        quest_rooms.append(pos); used_rooms.add(pos)
+
+    # The side-quest NPCs.
+    sub_npc_rooms = []
+    for si, sub in enumerate(subquests):
+        if si >= len(sub_positions): break
+        npc_pos = sub_positions[si]
+        used_rooms.add(npc_pos); sub_npc_rooms.append(npc_pos)
+        world[npc_pos]["npc"] = NPC(sub["npc"], -1, None, False, is_subquest=True, subqdata=sub, sub_idx=si)
+        world[npc_pos]["desc"] += f" You see {sub['npc']} here, clearly in need of a favor."
+        npc_rooms.append(npc_pos)
+
+    # The side-quest special-action rooms. You bring the found KEY item here to produce the
+    # item the NPC wants. I tag each with its side-quest index so nothing gets crossed up.
+    for si, sub in enumerate(subquests):
+        if si >= len(side_motif_positions): break
+        pos = side_motif_positions[si]; motif_idx = sub["motif"]; motif_data = motifs[motif_idx]
+        world[pos]["desc"] = f"{motif_data['room']}"
+        world[pos]["motif"] = motif_idx
+        world[pos]["side_idx"] = si
+        world[pos]["special_interactions"] = [motif_data.get("interaction", "examine")]
+        if "hidden_lore" in motif_data:
+            world[pos]["hidden_lore"] = motif_data["hidden_lore"]
+        used_rooms.add(pos)
+    # ===== Dumping monsters onto the map. =====
+    # I tune the density to the map size, roughly one monster per N rooms. A safe zone around the
+    # hub stays monster-free so a fresh player can get their bearings before something eats them, and
+    # I place bosses on purpose instead of sprinkling them like an idiot. Regular enemies lean
+    # toward the weak end so the whole world isn't wall-to-wall heavy hitters. It's that
+    # 80/20 weak-to-strong split every decent roguelike uses. I didn't invent it, I just do it right.
+    diff_mod = DIFFICULTY_MODIFIERS[difficulty]
+    total_rooms = width * height
+    density = {
+        DifficultyLevel.EASY: 9,
+        DifficultyLevel.NORMAL: 7,
+        DifficultyLevel.HARD: 5,
+        DifficultyLevel.NIGHTMARE: 4,
+    }[difficulty]
+    monster_count = max(6, total_rooms // density)
+
+    SAFE_RADIUS = 2  # Rooms within this Manhattan distance of the hub stay clear. Your safety bubble.
+    placed_monsters = []
+    monster_rooms = [
+        pos for pos in rooms
+        if pos not in quest_rooms
+        and pos not in used_rooms
+        and world[pos]["npc"] is None
+        and world[pos]["motif"] is None
+        and pos != glexo_pos
+        and m_dist(pos, (1, 1)) > SAFE_RADIUS
+    ]
+    random.shuffle(monster_rooms)
+
+    regular_monsters = [m for m in MONSTERS if not m.is_boss]
+    boss_monsters = [m for m in MONSTERS if m.is_boss]
+    # A weighted pool, so the weaker monsters (lower max HP) show up way *buuurp* more often.
+    weights = [max(1, 40 - m.max_hp) for m in regular_monsters]
+
+    def scale_monster(mon):
+        return Monster(
+            mon.name,
+            int(mon.hp * diff_mod["monster_hp_mult"]),
+            int(mon.max_hp * diff_mod["monster_hp_mult"]),
+            int(mon.damage * diff_mod["monster_damage_mult"]),
+            mon.loot.copy(),
+            mon.description,
+            mon.special_attack_chance,
+            mon.special_attack_name,
+            mon.is_boss,
+        )
+
+    for pos in monster_rooms:
+        if len(placed_monsters) >= monster_count:
+            break
+        if any(m_dist(pos, m) < 2 for m in placed_monsters):
+            continue  # Never park two monsters in rooms right next to each other. No gang ambushes.
+        mon = random.choices(regular_monsters, weights=weights, k=1)[0]
+        scaled = scale_monster(mon)
+        world[pos]["monster"] = scaled
+        world[pos]["desc"] += f" A {mon.name} lurks here. {mon.description}"
+        placed_monsters.append(pos)
+        used_rooms.add(pos)
+
+    # I drop one or two bosses guarding the rooms next to the final quest motifs, so the
+    # finale actually has some bite instead of being a cakewalk.
+    if boss_monsters and quest_rooms:
+        guard_targets = quest_rooms[-2:]
+        # Distinct bosses, Cromulons dealt first, so at least one Cromulon ALWAYS exists, because the
+        # 'Show Me What You Got' achievement needs one and I'm not leaving that to chance.
+        boss_picks = random.sample(boss_monsters, min(len(guard_targets), len(boss_monsters)))
+        boss_picks.sort(key=lambda mob: 0 if "Cromulon" in mob.name else 1)
+        for i, target in enumerate(guard_targets):
+            neighbours = [
+                (target[0] + dx, target[1] + dy)
+                for dx, dy in ((0, 1), (0, -1), (1, 0), (-1, 0))
+                if (target[0] + dx, target[1] + dy) in world
+                and world[(target[0] + dx, target[1] + dy)]["npc"] is None
+                and world[(target[0] + dx, target[1] + dy)]["monster"] is None
+                and world[(target[0] + dx, target[1] + dy)]["motif"] is None
+                and (target[0] + dx, target[1] + dy) != glexo_pos
+                and m_dist((target[0] + dx, target[1] + dy), (1, 1)) > SAFE_RADIUS
+            ]
+            if neighbours:
+                bpos = random.choice(neighbours)
+                boss = scale_monster(boss_picks[i % len(boss_picks)])
+                world[bpos]["monster"] = boss
+                world[bpos]["desc"] += f" A {boss.name} lurks here. {boss.description}"
+                placed_monsters.append(bpos)
+                used_rooms.add(bpos)
+    # ===== Scattering the loot around. =====
+    # Single-instance stuff: every side-quest KEY item and every crafting MATERIAL exists exactly
+    # once, either on the floor or carried by one enemy. Side-quest REWARD pieces are NOT placed
+    # here, the NPCs hand those out when you finish their quest, so every craft genuinely makes you
+    # do a side quest AND hunt down materials. No freebies in my multiverse.
+    monster_positions = list(placed_monsters)
+    open_rooms = [
+        r for r in rooms
+        if r not in used_rooms and world[r]["npc"] is None
+        and world[r]["monster"] is None and world[r].get("motif") is None
+        and r != glexo_pos
+    ]
+    random.shuffle(open_rooms)
+    item_positions = []  # floor rooms that already hold an item, for soft spacing
+
+    def take_spread_room():
+        # Still random, just nudged apart: most of the time I eyeball a few random
+        # candidates and take whichever sits farthest from the nearest existing item,
+        # so loot spreads out instead of bunching up. No grid, no checkerboard. And
+        # about a third of the time I just grab a random one, so clusters can still happen.
+        if not open_rooms:
+            return None
+        if item_positions and random.random() < 0.7:
+            k = min(6, len(open_rooms))
+            cands = random.sample(open_rooms, k)
+            chosen = max(cands, key=lambda c: min(m_dist(c, p) for p in item_positions))
+        else:
+            chosen = random.choice(open_rooms)
+        open_rooms.remove(chosen); item_positions.append(chosen)
+        return chosen
+
+    def place_single(item):
+        # About a 35% shot I hang it on an existing enemy, so you gotta kill for it, otherwise it's on the floor.
+        if monster_positions and random.random() < 0.35:
+            mp = random.choice(monster_positions)
+            world[mp]["monster"].loot.append(item)
+            return
+        pos = take_spread_room()
+        if pos is not None:
+            world[pos]["items"].append(item)
+            world[pos]["desc"] += f" You notice {a_or_an(item)} {item} here."
+            used_rooms.add(pos)
+
+    for it in SIDE_KEY_ITEMS:
+        place_single(it)
+    for it in CRAFT_MATERIALS_SINGLE:
+        place_single(it)
+
+    # Consumables are allowed to repeat. Keeps exploring and fighting worth your while.
+    consumables = ["Healing Serum", "Energy Cell", "Federation Credits"]
+    n_consumable_rooms = max(8, len(open_rooms) // 4)
+    for _ in range(n_consumable_rooms):
+        pos = take_spread_room()
+        if pos is None:
+            break
+        item = random.choice(consumables)
+        world[pos]["items"].append(item)
+        world[pos]["desc"] += f" You notice {a_or_an(item)} {item} here."
+    total_lore_fragments_count = sum(1 for rm in world.values() if rm.get("hidden_lore"))
+    return world, quest_paths, quest_rooms, npc_rooms, [Q["motif"] for Q in EXTENDED_QUESTS], 0, total_lore_fragments_count
+# ===== Combat and achievement brains. The part that decides if you win or cry. =====
+def check_achievements(player, world, app_instance=None):
+    unlocked = []; total_rooms = len(world); game_complete = player.quest_idx >= len(EXTENDED_QUESTS)
+    for ach in ACHIEVEMENTS:
+        if ach.unlocked: continue
+        try:
+            local_scope = {
+                "player": player, "total_rooms": total_rooms, "game_complete": game_complete,
+                "cromulon_defeated_count": player.cromulon_defeated_count,
+                "mega_seeds_used": player.mega_seeds_used,
+                "EXTENDED_QUESTS": EXTENDED_QUESTS, "EXTENDED_SUBQUESTS": EXTENDED_SUBQUESTS,
+            }
+            if app_instance: local_scope["app"] = app_instance
+            condition = ach.condition
+            # I shove the module globals in here so any data names inside the conditions actually resolve. Plumbing.
+            if eval(condition, globals(), local_scope):
+                ach.unlocked = True; unlocked.append(ach)
+                if app_instance:
+                    app_instance.root.bell()
+                    app_instance.append_colored(f"🏅 ACHIEVEMENT UNLOCKED: {ach.name}!\n", "achievement")
+                    app_instance.append_colored(f"   Reward: {ach.reward}\n", "success")
+                if ach.name == "Dimension Hopper": player.portal_gun_no_charge_cost = True
+                elif ach.name == "Side Quest Morty": player.xp_bonus_active = True; player.xp_bonus_percent = 10
+                elif ach.name == "Interdimensional Explorer": player.max_hp += 10; player.hp = min(player.hp+10, player.max_hp)
+                elif ach.name == "Federation Fighter": player.base_damage_bonus += 5
+                elif ach.name == "Galaxy Brain (C-137)": player.max_charge += 10; player.charge = player.max_charge
+                elif ach.name == "Survived a Jerry": player.base_armor += 1
+                elif ach.name == "Plumbus Pro": player.plumbus_pro_active = True
+                elif ach.name == "Mega Seed Master": player.max_charge += 3; player.charge = min(player.charge+3, player.max_charge)
+                if app_instance: app_instance._recalc_passives(); app_instance.update_info_display()
+        except Exception as _ach_err:
+            # A truly busted condition shouldn't crash the whole game, but I'm also not gonna
+            # sweep it under the rug and pretend it's fine. Loud and non-fatal.
+            import sys as _sys
+            print(f"[achievement check] '{ach.name}' condition failed: {_ach_err}", file=_sys.stderr)
+    return unlocked
+def craft_item(recipe_name, player_materials, player_class=None):
+    if recipe_name not in CRAFTING_RECIPES: return False, "Unknown recipe", []
+    recipe = CRAFTING_RECIPES[recipe_name]; required = recipe["materials"]
+    temp = player_materials.copy()
+    for m in required:
+        if m in temp: temp.remove(m)
+        else: return False, f"Missing {m}", []
+    consumed = []
+    if player_class == "Fabricator Drone" and random.random() < 0.25: return True, recipe, consumed
+    for m in required: player_materials.remove(m); consumed.append(m)
+    return True, recipe, consumed
+# ===== The big game app class. This is the brain of the whole operation, Morty. =====
+class EnhancedGameApp:
+    
+    def _rm_h(self, q): return f"{q.get('act','').strip()}: {q.get('title', q.get('item','')).strip()}".strip(": ")
+    def _rm_verb(self, q): return EXTENDED_MOTIFS[q['motif']].get('interaction', 'examine').split('_')[0]
+    def _rm_clue(self, q): return EXTENDED_MOTIFS[q['motif']].get('clue', '').strip()
+    def _rm_npc_open(self, npc, q):
+        v = self._rm_verb(q); c = self._rm_clue(q)
+        if npc == "Rick C-137": return f"Rick burps. “Alright, {self.player.name}, {v} {c}, grab the thing, bring it back. It’s not rocket science. Well, it is, but just do it.”"
+        if npc == "Birdperson": return f"Birdperson tilts his head. “{v.capitalize()} {c}. It would be appreciated.”"
+        if npc == "President Morty": return f"Morty’s voice is calm and cold. “{v.capitalize()} {c}. Don’t make me repeat myself.”"
+        return f"{npc} says, “{v.capitalize()} {c}. Then bring it.”"
+    def _rm_npc_repeat(self, npc, q):
+        v = self._rm_verb(q); c = self._rm_clue(q)
+        if npc == "Rick C-137": return f"Rick sighs. “Still here? {v} {c}. Go.”"
+        if npc == "Birdperson": return f"Birdperson is patient. “{v.capitalize()} {c}. Then return.”"
+        if npc == "President Morty": return f"Morty doesn’t blink. “{v.capitalize()} {c}. Now.”"
+        return f"{npc}: “{v.capitalize()} {c}.”"
+    def _rm_have_item(self, npc, item):
+        norm_item = self._normalize_text(item)
+        if npc == "Rick C-137": return f"Rick eyes your pack. “You actually got the {item}? Hand it over. Type 'give {norm_item}'.”"
+        if npc == "Birdperson": return f"Birdperson nods once. “You found the {item}. You may give it to me. 'give {norm_item}'.”"
+        if npc == "President Morty": return f"Morty’s gaze lingers. “The {item}. Now. 'give {norm_item}'.”"
+        return f"{npc} notices. “The {item}. Give it to me. 'give {norm_item}'.”"
+    def _rm_gated(self, next_npc=None):
+        if next_npc: return f"This would make sense if you’d talked to {next_npc}. It doesn’t. Yet."
+        return "This doesn’t make sense yet. You’re missing context (and probably poor life choices)."
+    def _rm_found(self, q, item):
+        v = self._rm_verb(q)
+        if v == "tinker": return q["retrieve_story"]
+        if v == "scavenge": return q["retrieve_story"]
+        if v == "eat": return q["retrieve_story"]
+        if v == "observe": return q["retrieve_story"]
+        if v == "investigate": return q["retrieve_story"]
+        return f"You {v}. Now you have a {item}. Don’t overthink it."
+    def _rm_completed(self, npc):
+        if npc == "Rick C-137": return "Rick grunts approval. “Huh. Competent. Hate that.”"
+        if npc == "Birdperson": return "Birdperson bows slightly. “This… helps.”"
+        if npc == "President Morty": return "Morty smiles a smile that says ‘I planned this.’"
+        return f"{npc} accepts your offering with minimal drama."
+    def _rm_next_same(self, npc, nq):
+        v = self._rm_verb(nq); c = self._rm_clue(nq)
+        if npc == "Rick C-137": return f"Rick’s already onto the next problem. “{v.capitalize()} {c}. Next.”"
+        return f"{npc}: “{v.capitalize()} {c}.”"
+    def _normalize_text(self, s: str) -> str:
+        s = s.lower(); s = re.sub(r"[^\w\s]", "", s); s = re.sub(r"\s+", " ", s).strip(); return s
+    def _find_item_in_list(self, typed: str, options: list) -> str | None:
+        if not options: return None
+        t = self._normalize_text(typed); norm_map = {self._normalize_text(opt): opt for opt in options}
+        if t in norm_map: return norm_map.get(t)
+        for opt in options:
+            n = self._normalize_text(opt)
+            if t and (t in n or n in t): return opt
+        return None
+    def _is_plural(self, item_name: str) -> bool:
+        token = item_name.strip().split()[-1].lower()
+        known_plural = {"components", "credits", "goggles", "parts", "shards", "fragments", "ruins", "seeds", "cells", "notes", "scraps", "remains", "supplies", "wares", "chips", "circuits", "schematics"}
+        exceptions_singular = {"glass", "gas", "class"}
+        if token in known_plural: return True
+        if token.endswith("s") and token not in exceptions_singular: return True
+        return False
+    def _np(self, item_name: str, definite: bool = False) -> str:
+        if definite or self._is_plural(item_name): return f"the {item_name}"
+        return f"{a_or_an(item_name)} {item_name}"
+    def _pickup_phrase(self, item_name: str) -> str:
+        if self._is_plural(item_name): return f"some {item_name}"
+        return f"{a_or_an(item_name)} {item_name}"
+    
+    # ===== Feature 1: the shop. Where credits go to die. =====
+    def _handle_shop_interaction(self, command, parts):
+        shop_inventory = {
+            "Healing Serum": 10,
+            "Energy Cell": 15,
+            "Rickium Alloy": 50,
+            "Fleeb": 75,
+            "Microverse Battery": 30,
+            "Scavenged Parts": 5,
+        }
+        main_quest_items = [q['item'] for q in EXTENDED_QUESTS] + [q['rick_gift'] for q in EXTENDED_QUESTS]
+        
+        if command == "talk":
+            self.append_colored("Glexo grunts. 'Whaddya want? See what I got with `list`, `buy <item>`, or `sell <item>` what you don't need. Don't waste my time.'\n", "lore")
+            return
+        
+        if command == "list":
+            self.append_colored("Glexo gestures to his wares. 'Best junk this side of the finite curve.'\n", "quest")
+            for item, price in sorted(shop_inventory.items()):
+                self.append_colored(f"  - {item}: {price} Credits\n")
+            self.append_colored(f"You have {self.player.federation_credits} Credits.\n", "success")
+            return
+        
+        if command == "buy":
+            if len(parts) < 2: self.append_colored("Glexo rolls his eyes. 'Buy what, genius? `buy <item>`.'\n", "error"); self.root.bell(); return
+            item_name = self._find_item_in_list(" ".join(parts[1:]), list(shop_inventory.keys()))
+            if not item_name: self.append_colored("'I ain't sellin' that. Check the list.'\n", "error"); self.root.bell(); return
+            
+            price = shop_inventory[item_name]
+            if self.player.federation_credits < price: self.append_colored(f"'You think I'm running a charity? That's {price} Credits. You only got {self.player.federation_credits}. Get outta here.'\n", "error"); self.root.bell(); return
+            
+            self.player.federation_credits -= price
+            
+            if item_name in ["Healing Serum", "Energy Cell", "Fleeb"]:
+                self.player.inventory.append(item_name)
+            else:
+                self.player.crafting_materials.append(item_name)
+                
+            self.append_colored(f"You bought {self._np(item_name)} for {price} Credits.\n", "success")
+            self.update_info_display(); self.root.bell()
+            return
+        
+        if command == "sell":
+            if len(parts) < 2: self.append_colored("'Sell what? Don't waste my time.'\n", "error"); self.root.bell(); return
+            
+            available_for_sale = self.player.inventory + self.player.crafting_materials
+            item_to_sell = self._find_item_in_list(" ".join(parts[1:]), available_for_sale)
+            
+            side_quest_items = [s["key_item"] for s in EXTENDED_SUBQUESTS] + [s["need_item"] for s in EXTENDED_SUBQUESTS] + SIDE_REWARD_PIECES
+            crafted_core_items = list(CRAFTING_RECIPES.keys())
+            blocked_items = set(main_quest_items + side_quest_items + crafted_core_items)
+            
+            if item_to_sell in blocked_items: self.append_colored("'Are you crazy? That looks important. I'm not touching it. Too much heat.'\n", "error"); self.root.bell(); return
+            if not item_to_sell: self.append_colored("'You don't have that, you idiot.'\n", "error"); self.root.bell(); return
+            
+            sell_price = shop_inventory.get(item_to_sell, 0) // 3 or 2
+            
+            if item_to_sell in self.player.inventory: self.player.inventory.remove(item_to_sell)
+            elif item_to_sell in self.player.crafting_materials: self.player.crafting_materials.remove(item_to_sell)
+                
+            self.player.federation_credits += sell_price
+            self.append_colored(f"You sold {item_to_sell} for {sell_price} Credits. Glexo barely looks up.\n", "success")
+            self.update_info_display(); self.root.bell()
+            return
+            
+    # ===== Feature 2: random events. The multiverse being weird for fun. =====
+    def _trigger_random_event(self):
+        # Rare just-for-laughs multiverse weirdness. It only fires in 'quiet' rooms, meaning
+        # nothing else is going on (no NPC, quest, or monster), at a low chance, pulling from a big
+        # pool so it never gets repetitive. And relax, nothing in here can ever actually kill you.
+        if self._check_if_dead(): return
+        room = self.world[(self.player.x, self.player.y)]
+        if room.get("npc") or room.get("motif") or room.get("monster"): return
+        if random.random() >= 0.05: return  # Roughly 5% per quiet move. Rare on purpose, Morty, don't expect fireworks every step.
+        p = self.player
+        flavor = [
+            "A Mr. Meeseeks poofs in, shouts 'EXISTENCE IS PAIN!', and poofs back out before you can reply.",
+            "A tiny Rick on a hoverboard zips past screaming about back taxes, then blinks out of reality.",
+            "A portal opens, drops a half-eaten sandwich at your feet, and snaps shut. You leave it. Probably cursed.",
+            "The floor briefly turns into writhing Cronenberg flesh, reconsiders, and goes back to being a floor.",
+            "Two Jerrys shuffle past arguing about which one is the real Jerry. Neither is worth the trouble.",
+            "You catch your reflection in a puddle. It winks at you. You did not wink.",
+            "A Plumbus rolls by, beeps once in greeting, and continues about its day.",
+            "Snowball trots past in a tailored power suit. He gives you a respectful nod. You nod back.",
+            "Birdperson's voice echoes from nowhere: 'In Bird culture, this is considered a dick move.' You did nothing. Yet.",
+            "A Gromflomite tourist asks you for directions to the Citadel, then wanders off before you can answer.",
+            "A cosmic announcer booms 'GET SCHWIFTY!' across the dimension, then quietly mutters an apology.",
+            "An empty Meeseeks box hums on the ground. You decide, wisely, not to press the button.",
+            "Reality buffers for a second, like a stream catching up. Then everything's fine. Mostly.",
+            "Squanchy waves at you from a passing interdimensional bus. At least you think it was Squanchy.",
+            "A vending machine offers you 'Eyehole Man' cereal. You decline. It judges you silently.",
+            "A wormhole burps somewhere nearby. It smells faintly of Szechuan sauce. You move on with your life.",
+            "You hear faint applause from an audience that isn't there. The fourth wall feels thin today.",
+            "A Gazorpian drone scans you, labels you 'NOT A THREAT', and flies off insultingly fast.",
+        ]
+        roll = random.random()
+        if roll < 0.82:                                   # Mostly just harmless flavor. Window dressing.
+            self.append_colored("🌀 " + random.choice(flavor) + "\n", "lore")
+        elif roll < 0.90:                                 # A little lucky credit find. Pocket change.
+            c = random.randint(1, 5); p.federation_credits += c
+            self.append_colored(f"🪙 A pouch of {c} Federation Credits tumbles out of a closing portal. Finders keepers. (Total: {p.federation_credits})\n", "success")
+            self.update_info_display()
+        elif roll < 0.96 and p.hp < p.max_hp:             # A tiny heal, but only if you're actually hurt. No topping off at full.
+            h = random.randint(1, 3); p.hp = min(p.max_hp, p.hp + h)
+            self.append_colored(f"💚 A passing Meeseeks 'fixes your posture.' You feel oddly better. (+{h} HP)\n", "success")
+            self.update_info_display()
+        elif p.hp > 1:                                    # A harmless little mishap. It can NEVER knock you to zero. I'm not a monster. Mostly.
+            p.hp -= 1
+            self.append_colored("🤕 You stub your toe on an interdimensional pebble. HP -1. You're fine, walk it off.\n", "combat")
+            self.update_info_display()
+        else:                                             # At 1 HP it's pure flavor, zero risk. I'm not killing you with a gag.
+            self.append_colored("🌀 " + random.choice(flavor) + "\n", "lore")
+    def __init__(self, root):
+        # A 12 by 12 grid. 144 rooms. Do the math, I already did.
+        self.width, self.height = 12, 12
+        self.root = root
+        self.root.title("Rick and Morty - Multiverse Mayhem v1.3.0.3")
+        # Windows slaps the Python interpreter's icon on the TASKBAR by default because it lumps
+        # our window in under pythonw.exe. So I declare our own AppUserModelID, which makes Windows
+        # treat this like its own real application and finally show OUR icon in the taskbar.
+        # The title-bar icon is a separate fight I handle below. Windows, am I right.
+        try:
+            if sys.platform.startswith("win"):
+                import ctypes
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("RickAndMorty.MultiverseMayhem.1.3.0.3")
+        except Exception:
+            pass
+        # I resolve the window icon once and hang onto it so every popup can reuse it.
+        # Toplevel windows don't inherit the main window's icon, so without this little
+        # stash the map, journal, all of 'em would show that generic Python feather. Gross.
+        if hasattr(sys, "_MEIPASS"):
+            self.icon_path = os.path.join(sys._MEIPASS, "icon.ico")
+        else:
+            self.icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
+        if not os.path.exists(self.icon_path):
+            self.icon_path = "icon.ico"
+        # Setting it as the default means every Toplevel, current and future, just inherits it,
+        # which together with that AppUserModelID up top is the combo that finally makes the
+        # icon stick in the Windows taskbar. Took me two hacks. Worth it.
+        try:
+            if os.path.exists(self.icon_path):
+                self.root.iconbitmap(default=self.icon_path)
+        except Exception:
+            pass
+        self._apply_icon(self.root)
+        self.root.geometry("1200x900+30+20")
+        self.world = None; self.quest_paths = None; self.quest_rooms = None; self.npc_rooms = None; self.motifs_in_play = None
+        self.player = None; self.difficulty = DifficultyLevel.NORMAL; self.map_popup = None; self._last_wait_line = None
+        # Saves go in a 'saves' folder right next to the game (next to the .exe when it's frozen,
+        # next to the .py otherwise) so they survive and you can actually find them. Logical.
+        if getattr(sys, "frozen", False):
+            _base = os.path.dirname(sys.executable)
+        else:
+            try: _base = os.path.dirname(os.path.abspath(__file__))
+            except NameError: _base = os.getcwd()
+        self.saves_dir = os.path.join(_base, "saves")
+        try: os.makedirs(self.saves_dir, exist_ok=True)
+        except Exception: self.saves_dir = os.path.join(os.getcwd(), "saves"); os.makedirs(self.saves_dir, exist_ok=True)
+        self.current_save_name = None
+        self.journal_popup = None; self.achievements_popup = None; self.crafting_popup = None; self.combat_in_progress = False
+        self.total_lore_fragments_count = 0
+        self.setup_interface()
+        self.set_button_states(menu=True)
+        self.show_main_menu()
+        self.root.bind("<FocusIn>", self.on_window_focus); self.root.bind("<Button-1>", self.on_window_click)
+        
+    def _hard_exit(self):
+        from tkinter import messagebox; import sys
+        if not messagebox.askyesno("Quit Game", "Are you sure you want to quit?"): return
+        self.root.quit(); self.root.destroy(); sys.exit(0)
+    def setup_interface(self):
+        main_frame = tk.Frame(self.root); main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        left_frame = tk.Frame(main_frame); left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.text = scrolledtext.ScrolledText(left_frame, width=80, height=30, font=("Cascadia Mono", 13), state='disabled', bg='#0a0a0f', fg='#AFFF94', wrap=tk.WORD); self.text.pack(fill=tk.BOTH, expand=True); self.text.bind("<Configure>", self._on_text_resize)
+        self.text.tag_config("center", justify="center"); self.text.tag_config("quest", foreground="#FFD700"); self.text.tag_config("combat", foreground="#FF6B6B"); self.text.tag_config("achievement", foreground="#98D8E8")
+        self.text.tag_config("lore", foreground="#DDD6FE"); self.text.tag_config("error", foreground="#FF4444"); self.text.tag_config("success", foreground="#4ADE80"); self.text.tag_config("banner", font=("Consolas", 28, "bold"), foreground="#FFD700", justify="center"); self.text.tag_config("intro_text", font=("Consolas", 11), foreground="#DDD6FE", justify="center")
+        self.entry = tk.Entry(left_frame, width=80, font=("Consolas", 13), bg="#000000", fg="#FFFFFF", insertbackground="#FFFFFF", disabledbackground="#000000", disabledforeground="#FFFFFF"); self.entry.pack(fill=tk.X, pady=(5, 0))
+        self.entry.bind("<Up>", self._entry_arrow_up); self.entry.bind("<Down>", self._entry_arrow_down); self.entry.bind("<Left>", self._entry_arrow_left); self.entry.bind("<Right>", self._entry_arrow_right)
+        self._init_smart_completion(); self.entry.bind('<Return>', self.process_command); self.entry.config(state="disabled")
+        right_frame = tk.Frame(main_frame, width=300); right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(10, 0)); right_frame.pack_propagate(False)
+        action_frame = tk.LabelFrame(right_frame, text="Actions", font=("Arial", 10, "bold")); action_frame.pack(fill=tk.X, pady=(0, 10))
+        self.buttons = {}; actions = [("Map", self.toggle_map, "map"), ("Journal", self.toggle_journal, "journal"), ("Achievements", self.toggle_achievements, "achievements"), ("Crafting", self.toggle_crafting, "crafting"), ("Hint", self.show_hint, "hint"), ("Scan", self.scan_room, "scan")]
+        for i, (text, cmd, tag) in enumerate(actions):
+            btn = tk.Button(action_frame, text=text, width=12, command=cmd); btn.grid(row=i//2, column=i%2, padx=2, pady=2, sticky="ew"); self.buttons[tag] = btn
+        action_frame.columnconfigure(0, weight=1); action_frame.columnconfigure(1, weight=1)
+        control_frame = tk.LabelFrame(right_frame, text="Game", font=("Arial", 10, "bold")); control_frame.pack(fill=tk.X, pady=(0, 10))
+        # 'New / Load Game' takes the left column, 'Save' and 'Quit' split the right. Tidy.
+        _game_btn_font = ("Segoe UI", 9)
+        newload = tk.Button(control_frame, text="New / Load Game", height=2, font=_game_btn_font, command=self.show_save_manager); newload.grid(row=0, column=0, padx=2, pady=2, sticky="ew"); self.buttons["new"] = newload; self.buttons["load"] = newload
+        sq_frame = tk.Frame(control_frame); sq_frame.grid(row=0, column=1, padx=0, pady=0, sticky="ew")
+        save_btn = tk.Button(sq_frame, text="Save", height=2, font=_game_btn_font, command=self.save_game); save_btn.grid(row=0, column=0, padx=2, pady=2, sticky="ew"); self.buttons["save"] = save_btn
+        quit_btn = tk.Button(sq_frame, text="Quit", height=2, font=_game_btn_font, command=self._hard_exit); quit_btn.grid(row=0, column=1, padx=2, pady=2, sticky="ew"); self.buttons["quit"] = quit_btn
+        sq_frame.columnconfigure(0, weight=1); sq_frame.columnconfigure(1, weight=1)
+        control_frame.columnconfigure(0, weight=1, uniform="gamerow"); control_frame.columnconfigure(1, weight=1, uniform="gamerow")
+        self.root.protocol("WM_DELETE_WINDOW", self._hard_exit)
+        self.info_frame = tk.LabelFrame(right_frame, text="Player Info", font=("Arial", 10, "bold")); self.info_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        self.info_text = tk.Text(self.info_frame, height=21, width=30, font=("Consolas", 11), state='disabled', bg='#1a1a1e', fg='#AFFF94'); self.info_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.info_text.tag_config("lbl", foreground="#AFFF94"); self.info_text.tag_config("val", foreground="#5EEAD4")
+        self.minimap_frame = tk.LabelFrame(right_frame, text="Mini Map", font=("Arial", 10, "bold")); self.minimap_frame.pack(fill=tk.X)
+        self.minimap_text = tk.Text(self.minimap_frame, height=12, width=30, font=("Consolas", 16), state='disabled', bg='#0f0f13', fg='#888888'); self.minimap_text.pack(fill=tk.X, padx=5, pady=5)
+        # The Player Info and Mini Map panels are read-only displays. Look, don't touch.
+        # I rip out the default 'Text' class bindings so they ignore ALL your input: wheel,
+        # click, and especially click-drag, which otherwise kicks off Tk's self-rescheduling
+        # auto-scroll timer and slides the box around. I can still update them in code,
+        # I just killed the user-event handling so you can't screw them up.
+        for _w in (self.info_text, self.minimap_text):
+            _w.bindtags(tuple(t for t in _w.bindtags() if t != "Text"))
+        self.minimap_text.tag_config("legend", font=("Consolas", 12), foreground="#AFFF94")
+    # ===== Tab-completion engine. So you don't have to type like an animal. =====
+    def _init_smart_completion(self):
+        self._tab = None  # The live Tab-cycle state, or None when you're not cycling.
+        self.entry.bind("<Tab>", self._on_tab, add="+")
+        self.entry.bind("<ISO_Left_Tab>", self._on_shift_tab, add="+")
+        self.entry.bind("<Shift-Tab>", self._on_shift_tab, add="+")
+        # Typing anything that isn't Tab or a modifier kills the current cycle, so the NEXT
+        # Tab recomputes fresh from whatever's actually sitting in the box.
+        self.entry.bind("<Key>", self._cancel_tab_cycle, add="+")
+    # Verbs that expect a target after 'em. Complete one of these and I tack on a space
+    # so you can immediately Tab again and cycle through the valid targets. Smooth.
+    _ARG_VERBS = {"get", "give", "use", "craft", "buy", "sell", "look", "examine", "l", "portal_jump", "sense"}
+    def _cancel_tab_cycle(self, event):
+        if event.keysym not in ("Tab", "ISO_Left_Tab", "Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R", "Caps_Lock"):
+            self._tab = None
+    def _close_completion_popup(self):
+        # No popup here. It's a harmless stub. Left it on purpose, don't delete it.
+        self._tab = None
+    def _on_tab(self, event):
+        self._cycle_completion(1); return "break"
+    def _on_shift_tab(self, event):
+        self._cycle_completion(-1); return "break"
+    def _cycle_completion(self, direction):
+        if not getattr(self, "player", None) or not getattr(self, "world", None): return
+        try: text = self.entry.get()
+        except Exception: return
+        try: caret = self.entry.index(tk.INSERT)
+        except Exception: caret = len(text)
+        st = self._tab
+        if st and st.get("result_text") == text and st.get("result_caret") == caret and st.get("candidates"):
+            st["index"] = (st["index"] + direction) % len(st["candidates"])  # Keep the cycle going.
+        else:
+            ctx = self._get_command_context(text, caret)
+            cands = self._completion_candidates(ctx)
+            if not cands:
+                self._tab = None; return
+            st = {"start": ctx["stem_start"], "candidates": cands,
+                  "index": 0 if direction >= 0 else len(cands) - 1,
+                  "arg0": (ctx["arg_index"] == 0)}
+        cand = st["candidates"][st["index"]]
+        self.entry.delete(st["start"], tk.END)  # The stem runs to the end of the line while you're completing.
+        self.entry.insert(st["start"], cand)
+        caret_after = st["start"] + len(cand)
+        # A single top-level verb that takes a target, so I add a space and end the cycle,
+        # and the next Tab starts cycling that verb's valid targets. Chain it, Morty.
+        if st.get("arg0") and len(st["candidates"]) == 1 and cand in self._ARG_VERBS:
+            self.entry.insert(caret_after, " "); caret_after += 1
+            self.entry.icursor(caret_after); self._tab = None; return
+        self.entry.icursor(caret_after)
+        st["result_text"] = self.entry.get(); st["result_caret"] = caret_after
+        self._tab = st
+    def _completion_candidates(self, ctx):
+        """Candidates relevant to this exact moment, narrowed by what's typed."""
+        vocab = self._gather_vocab(ctx)
+        stem = ctx["stem"].lower()
+        if not stem:
+            return list(vocab)
+        starts = [v for v in vocab if v.lower().startswith(stem)]
+        if starts: return starts
+        return [v for v in vocab if stem in v.lower()]  # Fallback: just match on substring. Good enough.
+    def _entry_arrow_up(self, event):
+        self.move((0, -1)); return "break"
+    def _entry_arrow_down(self, event):
+        self.move((0, 1)); return "break"
+    def _entry_arrow_left(self, event):
+        self.move((-1, 0)); return "break"
+    def _entry_arrow_right(self, event):
+        self.move((1, 0)); return "break"
+    def _get_command_context(self, text, caret_index):
+        before = text[:caret_index]; parts = before.split()
+        if before.endswith(" ") or not parts: stem = ""; stem_start = caret_index; stem_end = caret_index; arg_index = len(parts); tokens = parts[:]
+        else: stem = parts[-1]; tokens = parts[:-1]; stem_start = caret_index - len(stem); stem_end = caret_index; arg_index = len(tokens)
+        verb = (tokens[0].lower() if tokens else (stem.lower() if arg_index == 0 else ""))
+        return {"tokens": tokens, "verb": verb, "arg_index": arg_index, "stem": stem, "stem_start": stem_start, "stem_end": stem_end, "full_text": text, "caret": caret_index,}
+    def _gather_vocab(self, ctx):
+        verb = ctx["verb"]; argi = ctx["arg_index"]
+        if not getattr(self, "player", None) or not getattr(self, "world", None):
+            return sorted(set(COMMAND_VERBS), key=lambda s: s.lower()) if argi == 0 else []
+        p = self.player; pos = (p.x, p.y); room = self.world.get(pos, {}); inv_items = list(dict.fromkeys(p.inventory)); room_items = room.get("items", [])[:]; recipes = list(CRAFTING_RECIPES.keys())
+        # Top level: I only offer the actions you can actually pull off RIGHT NOW. No teasing.
+        if argi == 0:
+            return self._relevant_actions()
+        v = verb; shop_inventory_keys = ["Healing Serum", "Energy Cell", "Rickium Alloy", "Fleeb", "Microverse Battery", "Scavenged Parts"]
+        # These verbs take a single, maybe multi-word, target. I only offer choices for the first
+        # argument slot so a multi-word item can't get jammed back in on itself. Edge cases, ugh.
+        if argi >= 2 and v not in ("portal_jump", "sense"):
+            return []
+        if v in ("get",): return sorted(set(room_items), key=lambda s: s.lower())
+        if v in ("buy",): return sorted(shop_inventory_keys, key=lambda s: s.lower())
+        if v in ("sell", "give"): return sorted(set(inv_items + p.crafting_materials), key=lambda s: s.lower())
+        if v in ("use",):
+            usable = ["Healing Serum", "Energy Cell"]; usable.extend(inv_items)
+            for item in CRAFTING_RECIPES:
+                if item in inv_items: usable.append(item)
+            if "Energy Cell" in p.crafting_materials and "Energy Cell" not in usable: usable.append("Energy Cell")
+            if "Mega Seed" in p.inventory and "Mega Seed" not in usable: usable.append("Mega Seed")
+            return sorted(set(usable), key=lambda s: s.lower())
+        if v in ("craft",):
+            # Only the recipes you can build right this second, meaning you've got all the parts.
+            buildable = [r for r, data in CRAFTING_RECIPES.items() if self._can_craft(data)]
+            return sorted(buildable or recipes, key=lambda s: s.lower())
+        if v in ("look", "examine", "l"):
+            base_targets = ["room"]
+            if room.get("npc"): base_targets.append("npc")
+            if room.get("monster"): base_targets.append("enemy")
+            if "hidden_lore" in room and not room.get("lore_discovered"): base_targets.append("lore")
+            return sorted(set(base_targets + room_items), key=lambda s: s.lower())
+        if v in ("portal_jump", "sense"):
+            visited = sorted(getattr(p, "teleport_locations", [])); letters = [string.ascii_uppercase[i-1] for i in range(1, self.width+1)]
+            if argi == 1:
+                combo = [f"{string.ascii_uppercase[x-1]} {y}" for (x, y) in visited]; return sorted(set(letters + combo), key=lambda s: s.lower())
+            elif argi == 2: return [str(y) for y in range(1, self.height+1)]
+            else: return []
+        return []
+    def _can_craft(self, recipe_data):
+        """True if the player currently holds every material a recipe needs."""
+        from collections import Counter
+        have = Counter(self.player.crafting_materials) + Counter(self.player.inventory)
+        need = Counter(recipe_data["materials"])
+        return all(have.get(m, 0) >= n for m, n in need.items())
+    def _relevant_actions(self):
+        """The commands that make sense at this exact moment, used so Tab only
+        cycles through actions you can actually take here and now."""
+        p = self.player
+        if not p or not self.world: return sorted(COMMAND_VERBS, key=lambda s: s.lower())
+        room = self.world.get((p.x, p.y), {})
+        acts = set()
+        # Always on the table: menus, info, the meta stuff.
+        acts.update(["look", "examine", "inventory", "stats", "map", "journal",
+                     "achievements", "hint", "quest", "help", "save", "load", "use"])
+        if room.get("monster"):
+            # Mid-fight I only show fight options. Movement's locked, you can't just stroll off.
+            acts.update(["attack", "flee", "plasma_blast", "mind_wipe", "echo_scream"])
+            if p.race == "Neutrino Bomb": acts.add("show_me_what_you_got")
+        else:
+            # Out of combat you're free to roam and poke at things.
+            if p.y > 1: acts.add("north")
+            if p.y < self.height: acts.add("south")
+            if p.x < self.width: acts.add("east")
+            if p.x > 1: acts.add("west")
+            npc = room.get("npc")
+            if npc and getattr(npc, "is_shop", False): acts.update(["talk", "list", "buy", "sell"])
+            elif npc: acts.update(["talk", "give"])
+            if room.get("items"): acts.add("get")
+            for si in room.get("special_interactions", []): acts.add(si.split("_")[0])
+            if "hidden_lore" in room and not room.get("lore_discovered"): acts.add("search")
+            if p.crafting_materials: acts.add("craft")
+            if "Portal Gun (Replica)" in p.inventory: acts.add("portal_jump")
+            if p.race == "Recon Visor": acts.update(["scan", "sense"])
+        return sorted(acts, key=lambda s: s.lower())
+    def _longest_common_prefix(self, words):
+        if not words: return ""
+        s1 = min(words, key=str.lower); s2 = max(words, key=str.lower)
+        i = 0; L = min(len(s1), len(s2))
+        while i < L and s1[i].lower() == s2[i].lower(): i += 1
+        return s1[:i]
+    
+    # ===== UI and game flow. The screens, the menus, the whole show. =====
+    def append_centered(self, text, color_tag=None):
+        self.text.config(state='normal'); lines = text.strip("\n").splitlines()
+        for ln in lines: self.text.insert(tk.END, ln + "\n", ("center", color_tag) if color_tag else ("center",))
+        self.text.see(tk.END); self.text.config(state='disabled')
+
+    def _on_text_resize(self, event=None):
+        # While the start menu's up, I re-center it every time the window resizes. Keeps it pretty.
+        if not getattr(self, "_menu_active", False): return
+        if getattr(self, "_recenter_job", None):
+            try: self.root.after_cancel(self._recenter_job)
+            except Exception: pass
+        self._recenter_job = self.root.after(120, self._center_menu_vertically)
+
+    def _center_menu_vertically(self, _attempt=0):
+        # Tk Text hugs the top, so to center the splash vertically I pad the top with blank lines
+        # equal to half the leftover space. If anything goes sideways it just no-ops. No harm done.
+        if not getattr(self, "_menu_active", False): return
+        try:
+            self.text.update_idletasks()
+            h = self.text.winfo_height()
+            if h <= 1 and _attempt < 12:
+                self.root.after(80, lambda: self._center_menu_vertically(_attempt + 1)); return
+            self.text.config(state="normal")
+            prev = getattr(self, "_vpad_lines", 0)
+            if prev:
+                self.text.delete("1.0", f"{prev + 1}.0"); self._vpad_lines = 0
+            content_px = self.text.count("1.0", "end", "ypixels")
+            if isinstance(content_px, (tuple, list)): content_px = content_px[0]
+            import tkinter.font as tkfont
+            line_px = tkfont.Font(font=self.text.cget("font")).metrics("linespace") or 18
+            if content_px and h > content_px:
+                pad = int((h - content_px) // 2 // line_px)
+                if pad > 0:
+                    self.text.insert("1.0", "\n" * pad); self._vpad_lines = pad
+            self.text.yview_moveto(0.0); self.text.config(state="disabled")
+        except Exception:
+            try: self.text.config(state="disabled")
+            except Exception: pass
+
+    def append_colored(self, text, color_tag=None):
+        self.text.config(state='normal')
+        if color_tag:
+            self.text.insert(tk.END, text, color_tag)
+        else:
+            self.text.insert(tk.END, text)
+        self.text.see(tk.END)
+        self.text.config(state='disabled')
+        
+    def set_button_states(self, menu=False):
+        self._menu_active = menu
+        if hasattr(self, "_close_completion_popup"): self._close_completion_popup()
+        for tag, btn in self.buttons.items():
+            btn.config(state="normal" if not menu or tag in ["new", "load", "quit"] else "disabled")
+        self.entry.config(state="disabled" if menu else "normal")
+    def show_main_menu(self):
+        self.set_button_states(menu=True); self.text.config(state="normal"); self.text.delete(1.0, tk.END)
+        self.append_centered("RICK AND MORTY\n", "banner"); self.append_centered("🌟  Multiverse Mayhem! 🌟\n\n", "quest")
+        splash = r"""
+ ⠀⠀⠀⠀⠀  ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⢀⣀⣤⣴⣾⠿⠿⠿⠿⠟⠿⠟⠛⠻⠿⠿⠿⢿⣿⣷⣶⣤⣀                      
+ ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⡤⠤⢤⣄⣀⢀⣤⣶⣿⣷⣽⣌⠙⠳⢭⣉⣁⢀⣀⣤⣤⣶⣶⣤⣤⣤⣄⡀⠀ ⢿⣿⡟⠻⢿⣷⣦⡀⠀                 
+ ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⣆⠀⠀⠉⠙⠾⣝⠿⣉⣠⣿⡀⠀⠀⠙⣟⢿⠋⢩⡉⡛⠛⠛⠛⠻⢿⣿⣦⡀⠀⠉⠀⠀⠀⠈⢿⣿⣦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀     
+  ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀ ⠀⠀⠸⡄⠀⠀⠀⠀⠈⠳⣝⢿⣼⠀⠀⠀⠀⠘⣟⣷⣺⢳⣹⣿⣷⣦⣤⣤⣬⣽⣿⣷⣤⡀⠀⠀⠀⠈⠛⣿⣧⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀        
+  ⠀  ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡇⠀⠀⠀⠀⠀⠀⠈⠻⠃⠀⠀⠀⠀⠀⠸⣮⠏⠀⢧⠉⠛⢿⣿⣿⣉⠉⠻⣿⣿⣿⣄⡀⠀ ⠀⠻⢿⣿⣶⣄⠀⠀⠀⠀⠀⠀⠀       
+       ⠀⣀⣀⣀⣀⣀⣀⠤⡾⡇⠀⠀⠀⠀⠀⢀⣀⣠⠤⠤⠤⣄⣀⠀⠠⠏ ⢀⡇⠀⢀⠀⠘⠿⣧⠀⠻⣯⣙⠻⣿⣿⣶⣿⠆⠹⣏⠻⣿⣦⡀⠀⠀⠀⠀      
+  ⠀⠀⠀⠉⠻⣍⠉⠀⠀⠀⠀⠀⠀⠀⠈⠉⠳⠃⠀⠀⢀⣤⠞⠋⠁⠀⠀⠀⠀⣀⡈⠳⣄⠀⠀⠀⢀⡇⠀⠀⠀⢀⠀⠘⠿⣧⠀⠻⣯⣙⠻⣿⣿⣄⠀⠈⠀⠈⠻⣿⣷⡄⠀      
+ ⠀⠀⠀⠀⠀⠀⠙⠲⣄⠀⠀⠀⠀⠀⠀⠀⣰⠏⠀⢀⣠⠴⠒⠋⠉⢉⣉⣉⣉⣻⢷⡀⠀⢸⣅⣀⡤⢖⣯⣤⣤⣤⣄⠀⠀⠈⣿⣧⣈⠻⣿⣿⣄⠀⠈⠀⠈⠻⣿⣷⡄⠀     
+ ⠀⠀⠀⠀⠀⠀⠀⠀⣾⢷⡀⠀⠀⠀⠀⣼⠁⣠⠞⢉⡤⠖⠚⠉⠉⠉⠉⠉⢀⣠⠬⢷⣄⠀⠀⠀⠀⣼⠙⢻⣿⣿⣿⣦⡀⠀⢻⣿⣿⣧⠈⢻⣿⣧⠀⣦⠀⠀⢿⣿⣿⠀     
+ ⠀⠀⠀⠀⠀⠀⠀⢰⣿⣯⣇⠀⠀⠀⣰⠇⠀⠓⠊⠁⣠⣤⣤⣀⠀⠀⢀⡾⠋⠀⠀⠀⠈⢳⡀⠀⢠⠇⠀⠀⣧⣽⣿⣿⣿⡆⠀⠙⣿⡌⠁⢸⣷⡙⣦⣿⡷⠀⠈⢿⣿⠀     
+ ⠀⠀⠀⣀⣀⢀⣠⣾⣛⣻⠼⠀⠀⠀⡿⠀⠀⢀⡴⠋⠀⠀⠀⠈⠳⡄⡾⠀⠀⢀⡤⠄⠀⠀⡇⠀⡞⠀⠀⡀⠈⠉⠉⣿⡿⠁⠀⠀⠻⠿⣦⡈⠙⣷⡘⢿⣄⠀⢰⣿⣿⠀     
+  ⠀⠀⠀⠉⠻⣍⠉⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⡼⠀⠀⠀⡆⠀⠀⠀⢱⢳⠀⠀⠀⠀⠀⠀⢠⡇⠞⠓⠒⣺⠁⠀⠀⢰⡯⠖⠋⠉⠉⠉⠉⠉⠙⠓⠺⢽⡀⠙⣆⠈⣿⣿⡄        
+ ⠀ ⠀⠀⠀⠀⠈⢳⣤⡀⠀⠀⠀⠀⠀⣇⠀⠀⢷⠀⠀⠀  ⠀⠀⢀⡾⠈⠳⡤⣄⣀⡠⠴⣻⠀⠀⠀⢠⠏⢀⡤⠞⠉⠀⠀⢀⣀⣀⣀⣀⣀⣀⠀⠀⠀⠉⠳⣟⢰⣿⣿⣧        
+ ⠀⠀⠀⠀⠀⠀⢸⣷⣭⢗⣤⡤⠄⠀⢸⡀⠀⢈⠳⣄⣀⣀⣠⡴⠋⠀⣄⠀⢳⠠⠤⠶⠚⢹⡙⠲⣤⠏⢀⡞⠀⢀⣠⠴⠾⠭⠥⢤⣀⠀⠈⠉⠙⠲⢤⡀⠀⠈⠳⡽⣿⣿     
+ ⠀⠀⠀⠀⠀⠀⣼⣫⠞⠋⠀⠀⠀⠀⢘⣇⠀⠈⠓⠢⠤⠖⠚⠉⠀⠀⠘⣆⣈⡇⠀⠀⠀⠀⡇⣠⠇⢠⠎⠀⡴⠋⡥⠖⠋⠙⠒⢦⡀⠀⠀⠀⠀⢤⣀⡉⠳⡄⠀⢹⣹⡟     
+ ⠀⠀⠀⠀⠀⠰⣟⣒⡦⢤⣀⠀⠀⢰⠟⢻⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠀⠀⠀⠀⠀⡟⠁⢰⠃⢀⡞⠁⡼⠁⠀⠀⠀ ⠀⠀⠹⡄⠀⢀⣠⠤⠤⣍⡳⡝⡆⠀⢧⡇        
+ ⠀⠀⠀⠀⠀⠀⣿⣿⣿⣦⠈⠛⣦⠘⣆⠈⣧⠀⠀⢠⢇⣀⡤⢴⡖⠛⠛⠛⠛⠲⢤⡀⣶⠐⡇⠀⢸⡀⡞⠀⢷⠀ ⠀⠛⠋ ⠀⢰⠇⣰⠋⠀⠀⠀⠀⠙⣆⢹⡀⢸⠀     
+ ⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⠇⡼⠁⠀⠈⠉⢻⣧⠀⠘⢯⠙⡶⠋⠀⠀⠀⠀⠀⠀⠠⠞⠃⢠⡇⢀⡼⢻⠁⠀⠀⠈⠳⢤⣀⣀⣀⡴⠋⠀⡇⠀⠀⢠⣄⠀⠀⢸⠀⡇⢸⠀     
+ ⠀⠀⠀⠀⠀⠀⠀⠀⢻⣿⡟⣼⣠⡴⢖⡚⠉⢿⣿⡳⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡞⠀⢸⡀⢸⠀⠀⠀  ⠀⠀⠀⠀⠀⠠⣄⡘⣦⠹⣄⠀⠀⠉⠀⢀⡞⠀⡇⡾⠀       
+ ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢷⣯⣾⣷⡈⢿⡄⠻⠿⢿⣮⡷⣄⠀⠀⠀⠀⠀⠀⠀⠀⣠⡴⠋⠀⠀⠀⠙⠺⡄⠀ ⠀⠀⣀⣤⠶⡶⠦⣌⡉⠉ ⠈⠙⠒⠒⠚⠉⠀⢸⢱⠇⠀        
+ ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣾⣿⡄⠀⠀⠀⠈⠻⣿⣿⣷⣦⣤⣽⣿⣿⣷⣤⣤⣶⣶⣦⣤⡻⣄   ⠉⠉⠉⠻⣿⣿⣿⠀⠀⠀  ⠀⠀⣠⠏⢸⠀⠀⠀         
+ ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣷⡦⠀⠀⠀⠈⠛⢿⣭⣝⡛⠛⠛⠻⠿⠿⠟⠛⠻⢿⣿⣮⣳⢦⣀⠀⠀⠀⠀⠈⠉⠁⠀  ⢀⣠⠞⠓⠒⠋⠀⠀⠀          
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⢿⣿⣦⡀⠀⠀⣀⣀⠀⠙⢿⣿⣷⣶⣶⣶⣶⣤⣄⣤⣴⣿⣿⡿⠓⠋⠙⠒⠦⠤⠤⣴⣺⠏⠀⠀⠀⠀⠀⠀⠀⠀           
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠻⢿⣷⣤⣿⣿⣆⠀⠀⠈⠙⠛⠛⠛⠛⠛⠉⠉⠀⢀⣠⣤⣤⣴⣶⣿⣿⣿⣿⣿⠿⠟⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀          
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠙⠻⢿⣿⣿⣿⣿⣷⣤⣴⣿⣶⣾⣿⣷⣶⣿⣿⣿⣿⠿⠛⠛⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀          
+                
+"""
+        self.append_centered(splash, "achievement"); intro = ("Welcome to Rick and Morty: Multiverse Mayhem! Rick's got a problem, a half-built contraption, and a Morty-shaped errand boy: you. Explore the multiverse, run his jobs, fight weird monsters, craft ridiculous gadgets, and unlock absurd achievements.\n")
+        self.append_centered("\n\n" + intro + "\n\n", "intro_text"); self.append_centered("Hit 'New / Load Game' to pick a universe or start a fresh one. Rick will explain the rest.\n")
+        self.text.config(state="disabled"); self._vpad_lines = 0; self.root.after(60, self._center_menu_vertically)
+    
+    # ===== Player logic and combat helpers. Your guts, basically. =====
+    def _q(self, s):
+        """Swap the {pc} placeholder in quest/dialogue text for the player's chosen character name."""
+        return s.replace("{pc}", self.player.name) if self.player else s
+    def _check_if_dead(self) -> bool:
+        if self.player and self.player.hp <= 0:
+            self.append_colored("🩸 YOU ARE DEAD! Please load or start a new game.\n", "combat")
+            self.entry.config(state="disabled")
+            return True
+        return False
+        
+    def _recalc_passives(self):
+        if not self.player: return
+        p = self.player; p.item_armor_bonus = 0; p.item_damage_bonus = 0; p.unity_mind_shield_active = False; p.plumbus_pro_active = False; p.portal_gun_no_charge_cost = False; p.xp_bonus_active = False; p.xp_bonus_percent = 0
+        if "Unity's Mind Shield" in p.inventory: p.item_armor_bonus += 4; p.unity_mind_shield_active = True
+        if "Butter Robot" in p.inventory: p.item_damage_bonus += 2
+        if any(a.name == "Plumbus Pro" and a.unlocked for a in ACHIEVEMENTS): p.plumbus_pro_active = True
+        if any(a.name == "Dimension Hopper" and a.unlocked for a in ACHIEVEMENTS): p.portal_gun_no_charge_cost = True
+        if any(a.name == "Side Quest Morty" and a.unlocked for a in ACHIEVEMENTS): p.xp_bonus_active = True; p.xp_bonus_percent = 10
+        if p.pclass == "Targeting Chip": p.xp_bonus_active = True; p.xp_bonus_percent += 100
+        if p.pclass == "Portal Coil": p.portal_gun_no_charge_cost = True
+        # Heads up: 'Survived a Jerry' grants +1 base_armor ONE time, over in check_achievements.
+        # Do NOT re-apply it here or base_armor balloons by +1 on every recalc, and that runs on
+        # damn near every action, so you'd end up with infinite armor. I caught that. You're welcome.
+        p.armor = p.base_armor + p.item_armor_bonus; p.damage_bonus = p.base_damage_bonus + p.item_damage_bonus
+    def grant_xp(self, amount: int, source: str = ""):
+        if amount <= 0 or not self.player: return
+        p = self.player
+        if p.xp_bonus_active: amount = int(amount * (1 + p.xp_bonus_percent / 100))
+        old_level = p.level; p.xp += amount; p.level = p.xp // 50 + 1
+        msg = f"🌀 You gain {amount} XP"
+        if source: 
+            msg += f"  ({source})"
+        self.append_colored(msg + "\n", "success")
+        if p.level > old_level:
+            self.root.bell()
+            inc = p.level - old_level; p.base_damage_bonus += inc; p.max_charge += 2 * inc; p.charge = p.max_charge; p.max_hp += 2 * inc; p.hp = p.max_hp
+            self._recalc_passives()
+            self.append_colored(f"💫 Level UP! Now level {p.level}. Damage +{inc}, Max HP +{2*inc}, Max Charge +{2*inc} (fully restored).\n", "achievement")
+        self.update_info_display(); check_achievements(self.player, self.world, self)
+    def _consume_resources(self, charge=0, hp=0, xp=0) -> bool:
+        p = self.player
+        if p is None: return False
+        if p.hp < hp or p.charge < charge or p.xp < xp:
+            missing = []
+            if p.hp < hp: missing.append(f"{hp} HP (have {p.hp})")
+            if p.charge < charge: missing.append(f"{charge} Charge (have {p.charge})")
+            if p.xp < xp: missing.append(f"{xp} XP (have {p.xp})")
+            self.append_colored("❌ Not enough for that: needs " + ", ".join(missing) + ".\n", "error"); self.root.bell(); return False
+        p.hp -= hp; p.charge -= charge; p.xp -= xp
+        self.update_info_display(); return True
+    def _comedic_whiff(self, move, room):
+        """Use a combat move when there's NO enemy here. It's a dumb, funny flail:
+        it still spends whatever the move normally costs, but it changes nothing in
+        the world. No NPC is hurt, no item is destroyed, no quest/side-quest or
+        story state moves. Purely comic relief. HP cost is clamped so attacking
+        nothing can never actually kill you."""
+        p = self.player
+        cost = ATTACK_COST.get(move, {"hp": 0, "charge": 0, "xp": 0})
+        charge_c = cost.get("charge", 0); xp_c = cost.get("xp", 0); hp_c = cost.get("hp", 0)
+        # You still pay the Charge or XP this normally costs, and if you can't afford it,
+        # you just don't get to do the dumb thing. Economics, Morty.
+        if p.charge < charge_c or p.xp < xp_c:
+            missing = []
+            if p.charge < charge_c: missing.append(f"{charge_c} Charge (have {p.charge})")
+            if p.xp < xp_c: missing.append(f"{xp_c} XP (have {p.xp})")
+            self.append_colored("❌ You wind up for something incredibly stupid, then realize you can't afford it: needs " + ", ".join(missing) + ".\n", "error"); self.root.bell(); return
+        p.charge -= charge_c; p.xp -= xp_c
+        if hp_c: p.hp = max(1, p.hp - hp_c)   # Swinging at empty air won't kill you. Calm down, slugger.
+        self.update_info_display()
+        self.append_colored(self._whiff_line(move, room) + "\n", "combat")
+        self.root.bell()
+
+    def _whiff_line(self, move, room):
+        weapon = {
+            "attack": "take a wild swing",
+            "plasma_blast": "fire off a plasma blast",
+            "mind_wipe": "loose a mind-wipe pulse",
+            "echo_scream": "rip out an echo scream",
+            "show_me_what_you_got": "prime the Neutrino Bomb",
+        }.get(move, "attack")
+        npc = room.get("npc")
+        if npc and getattr(npc, "is_rick", False):
+            lines = [
+                f"You {weapon} at Rick. He doesn't even look up from his flask. \"Swing at me again, {self.player.name}, and I'll reschedule your birthday to *never*.\"",
+                f"You {weapon} at Rick. He burps, sidesteps, and keeps drinking. \"Bold. Stupid, but bold. Mostly stupid.\"",
+                f"You {weapon} at the only guy who can portal you home. Rick stares. \"Real galaxy-brain move there, champ.\"",
+            ]
+        elif npc and getattr(npc, "is_shop", False):
+            lines = [
+                f"You {weapon} at Glexo. All four eyes narrow as he racks a blaster. \"Pull that again and I'll add YOU to the inventory. Bargain bin.\"",
+                f"You {weapon} at the pawn stall. A 'YOU BREAK IT YOU BUY IT' sign clatters to the floor. Glexo just... waits.",
+            ]
+        elif npc and getattr(npc, "is_subquest", False):
+            nm = npc.name
+            lines = [
+                f"You {weapon} at {nm}, who yelps, flinches, and is somehow completely fine. \"RUDE. I was gonna help you!\"",
+                f"You {weapon} at {nm}. Absolutely nothing happens except a deeply disappointed look. Classic.",
+            ]
+        elif npc:
+            nm = npc.name
+            lines = [
+                f"You {weapon} at {nm}. They saw it coming a mile away and aren't impressed. Not a scratch.",
+                f"You {weapon} at {nm}. The universe flatly refuses to let plot-relevant characters die to your nonsense.",
+            ]
+        elif room.get("items"):
+            itm = room["items"][0]
+            lines = [
+                f"You {weapon} at the {itm} lying on the ground. You miss by a mile. The {itm} sits there, judging you.",
+                f"You {weapon} near the {itm}. Scorch marks everywhere, but the {itm} is, annoyingly, perfectly intact.",
+            ]
+        else:
+            lines = [
+                f"You {weapon} at absolutely nothing. The empty air takes it like a champ.",
+                f"You {weapon} into the void. A distant voice mutters, 'THIS guy's the hero?' (Probably Rick.)",
+                f"You {weapon} at the room itself. The room declines to press charges. For now.",
+            ]
+        return random.choice(lines)
+
+    def _quip(self, kind, what=""):
+        """A witty, Rick-and-Morty-flavored line for when an action does nothing,
+        makes no sense, or is just plain dumb. Used so EVERY action gets a response
+        instead of silence, and stupid ones get roasted."""
+        what = (what or "").strip()
+        pc = self.player.name if self.player else "you"
+        banks = {
+            "unknown": [
+                f"\"{what}\"? That's not a command, {pc}, that's a cry for help. Type 'help' before you hurt yourself.",
+                f"I-I don't even know what \"{what}\" is supposed to do, and I'm the smart one here. Try 'help'.",
+                f"Rick crackles over the comms: \"'{what}'? Did you faceplant on the keyboard again? It's 'help', genius.\"",
+                f"The multiverse has infinite valid commands. \"{what}\" is somehow not one of them. ('help' lists the real ones.)",
+                f"Wow, \"{what}\". Bold word salad for someone who clearly can't read a help menu. Type 'help'.",
+            ],
+            "nothing_to_take": [
+                f"There's nothing here to grab, {pc}. You're patting down an empty room like a confused raccoon.",
+                "Take what, exactly? The floor? The crushing disappointment? There's nothing here.",
+                "You reach for loot that doesn't exist. On brand, honestly.",
+            ],
+            "no_one": [
+                f"There's nobody here, {pc}. You're talking to drywall. Again.",
+                "Who are you even addressing? It's just you and your poor life choices in this room.",
+                "Nobody's here. Striking up a conversation with empty space. Real galaxy-brain stuff.",
+            ],
+            "dont_have": [
+                f"You don't have {what}, {pc}. You can't use what you don't own. That's, like, basic reality.",
+                f"Check your pockets, genius: no {what} in there. Just lint and regret.",
+                f"\"{what}\"? You don't have one. Try living in the same universe as your inventory.",
+            ],
+            "no_exit": [
+                "You walk face-first into the edge of the map. The universe has a wall here and you found it. With your nose.",
+                f"There's no exit that way, {pc}. That's just reality politely telling you 'no.'",
+                "You can't go that way. There's literally nothing rendered over there, kind of like in your head.",
+            ],
+            "cant_craft": [
+                f"You can't build {what}. You're missing parts, {pc}. A genius works with what he has. You work with... nothing.",
+                f"Crafting {what} needs materials you don't have. Shocking development, truly.",
+            ],
+            "wrong_place": [
+                f"You can't do that here, {pc}. Right idea, catastrophically wrong room.",
+                "Nope. Not here. The one time you try something and it's in the wrong place entirely.",
+            ],
+        }
+        return random.choice(banks.get(kind, banks["unknown"]))
+
+    def _npc_quest_state(self, npc_name: str):
+        cur = self.player.quest_idx; idxs = [i for i, q in enumerate(EXTENDED_QUESTS) if q['giver_npc'] == npc_name]
+        if not idxs: return (None, None)
+        if cur in idxs: return ("current", cur)
+        past = [i for i in idxs if i < cur]
+        if past: return ("past", max(past))
+        future = [i for i in idxs if i > cur]
+        if future: return ("future", min(future))
+        return (None, None)
+    
+    def update_info_display(self):
+        if not self.player: return
+        self.info_text.config(state='normal'); self.info_text.delete(1.0, tk.END)
+        p = self.player
+        _sense = CLASS_SENSE.get(p.pclass)
+        _sense_label = {"items": "Items (I)", "enemy": "Enemies (E)", "objective": "Quests/Shop (Q/$)", "main_npc": "Main NPCs (N)", "side_npc": "Side NPCs (S)"}
+        radar = _sense_label.get(_sense[0], 'none') if _sense else 'none'
+        def line(label, value):
+            self.info_text.insert(tk.END, f"{label}: ", "lbl"); self.info_text.insert(tk.END, f"{value}\n", "val")
+        def gap():
+            self.info_text.insert(tk.END, "\n")
+        line("Universe", self.current_save_name or "(none)"); line("Character", p.name); line("Main Gadget", p.race); line("Attachment", p.pclass)
+        line("Radar", radar); line("Difficulty", p.difficulty.value.title())
+        line("HP", f"{p.hp}/{p.max_hp}"); line("Charge", f"{p.charge}/{p.max_charge}"); line("XP", f"{p.xp}   (Level {p.level})")
+        line("Armor", p.armor); line("Damage", f"+{p.damage_bonus}")
+        gap()
+        line("Position", f"({p.x}, {p.y})"); line("Quest", f"{p.quest_idx + 1}/{len(EXTENDED_QUESTS)}")
+        line("Moves", p.moves_taken); line("Achievements", f"{len([a for a in ACHIEVEMENTS if a.unlocked])}/{len(ACHIEVEMENTS)}")
+        gap()
+        line("Items", len(p.inventory)); line("Materials", len(p.crafting_materials)); line("Intel", len(p.lore_fragments)); line("Federation Credits", p.federation_credits)
+        self.info_text.config(state='disabled')
+    def _sensed(self, x, y, room):
+        """If the player's class radar detects this UNVISITED room's category and
+        it's within range, return (symbol, dim_tag) so the map can draw a faint
+        'detected' marker. Otherwise None (room stays '?')."""
+        if not self.player: return None
+        sense = CLASS_SENSE.get(self.player.pclass)
+        if not sense: return None
+        category, radius = sense
+        if abs(x - self.player.x) + abs(y - self.player.y) > radius: return None
+        npc = room.get("npc")
+        if category == "items" and room.get("items"): return ("[I]", "dim_item")
+        if category == "enemy" and room.get("monster"): return ("[E]", "dim_monster")
+        if category == "main_npc" and npc and not getattr(npc, "is_subquest", False) and not getattr(npc, "is_shop", False):
+            return ("[N]", "dim_npc")
+        if category == "side_npc" and npc and getattr(npc, "is_subquest", False):
+            return ("[S]", "dim_subnpc")
+        if category == "objective":
+            if npc and getattr(npc, "is_shop", False): return ("[$]", "dim_shop")
+            if room.get("motif") is not None:
+                solved = (room.get("subquest_done") or (room.get("quest_idx") is not None and room["quest_idx"] < self.player.quest_idx))
+                if not solved: return ("[Q]", "dim_quest")
+        return None
+    def update_enhanced_map(self):
+        if not (hasattr(self, "map_popup") and self.map_popup and hasattr(self, "map_text_widget") and self.map_text_widget and self.map_popup.winfo_exists()): return
+        letters = string.ascii_uppercase; cellw = 3
+        self.map_text_widget.configure(state="normal"); self.map_text_widget.delete(1.0, tk.END)
+        tag_colors = {"map_player": "#FFFFFF", "map_monster": "#FF6B6B", "map_npc": "#FFD700", "map_shop": "#FFA500", "map_subnpc": "#40C4FF", "map_item": "#E67BFF", "map_quest": "#4ADE80", "map_empty": "#888888", "map_monwarn": "#C40202", "map_questwarn": "#019644", "map_subwarn": "#019644", "map_unknown": "#555555", **DIM_SENSE_COLORS}
+        for tag, col in tag_colors.items(): self.map_text_widget.tag_config(tag, foreground=col)
+        self.map_text_widget.insert(tk.END, "   ");
+        for x in range(1, self.width + 1): self.map_text_widget.insert(tk.END, f"{letters[x-1]}".center(cellw), ("map_empty",))
+        self.map_text_widget.insert(tk.END, "\n")
+        for y in range(1, self.height + 1):
+            self.map_text_widget.insert(tk.END, f"{y:<2} ", ("map_empty",))
+            for x in range(1, self.width + 1):
+                room = self.world[(x, y)]; symbol, tag = "[ ]", "map_empty"
+                if (x, y) == (self.player.x, self.player.y): symbol, tag = "[@]", "map_player"
+                elif room.get("theme") == "hub" and (x, y) == (1, 1): symbol, tag = "[H]", "map_npc"
+                elif not room.get("visited"):
+                    sensed = self._sensed(x, y, room)
+                    symbol, tag = sensed if sensed else ("[?]", "map_unknown")
+                elif room.get("monster"): symbol, tag = "[E]", "map_monster"
+                elif room.get("npc"):
+                    _n = room["npc"]
+                    if getattr(_n, "is_shop", False): symbol, tag = "[$]", "map_shop"
+                    elif getattr(_n, "is_subquest", False): symbol, tag = "[S]", "map_subnpc"
+                    else: symbol, tag = "[N]", "map_npc"
+                elif room.get("items"): symbol, tag = "[I]", "map_item"
+                elif room.get("motif") is not None:
+                    solved = (room.get("subquest_done") or (room.get("quest_idx") is not None and room["quest_idx"] < self.player.quest_idx))
+                    if solved: symbol, tag = "[ ]", "map_empty"
+                    else: symbol, tag = "[Q]", "map_quest"
+                self.map_text_widget.insert(tk.END, symbol, tag)
+            self.map_text_widget.insert(tk.END, "\n")
+        _W = 20
+        _pairs = [("@ = You", "I = Items (or Credits)"),
+                  ("E = Enemy", "N = Main Quest NPC"),
+                  ("S = Side Quest NPC", "Q = Quest Room"),
+                  ("$ = Pawn Shop", "H = Citadel Hub")]
+        legend = "\nLEGEND:\n" + "".join(l.ljust(_W) + r + "\n" for l, r in _pairs)
+        legend += "? = Unseen Dimension\n"
+        self.map_text_widget.tag_config("map_legend", font=("Consolas", 15))
+        self.map_text_widget.insert(tk.END, legend, "map_legend"); self.map_text_widget.configure(state="disabled")
+    def show_enhanced_map(self):
+        if self._check_if_dead(): return
+        if not self.player: self.append_colored("Start a game to view the map!\n", "error"); return
+        if self.map_popup and self.map_popup.winfo_exists():
+            self.update_enhanced_map()
+            try:
+                self.map_popup.deiconify(); self.map_popup.lift(); self.map_popup.focus_force()
+                # I briefly flag it topmost so it pops above the main window on Windows, then immediately
+                # let go of topmost so other popups can still come to the front later. In and out.
+                self.map_popup.attributes("-topmost", True)
+                self.map_popup.after(400, lambda: self.map_popup.winfo_exists() and self.map_popup.attributes("-topmost", False))
+            except Exception:
+                pass
+            return
+        self.map_popup = tk.Toplevel(self.root); self.map_popup.title("Cosmic Navigation Map"); self.map_popup.resizable(False, False); self._apply_icon(self.map_popup)
+        self.map_text_widget = tk.Text(self.map_popup, font=("Consolas", 16), bg="#0a0a0f", fg="#AFFF94", wrap="none", width=self.width*3+4, height=self.height+9, state='disabled', borderwidth=0, highlightthickness=0)
+        tag_colors = {"map_player": "#AFFF94", "map_monster": "#FF6B6B", "map_npc": "#FFD700", "map_shop": "#FFA500", "map_subnpc": "#40C4FF", "map_item": "#E67BFF", "map_quest": "#4ADE80", "map_empty": "#888888", "mini_monwarn": "#C40202", "mini_questwarn": "#019644", "mini_subwarn": "#019644", "map_unknown": "#555555",}
+        for tag, col in tag_colors.items(): self.map_text_widget.tag_config(tag, foreground=col)
+        self.map_text_widget.pack(padx=10, pady=10); self.map_popup.update_idletasks()
+        _mw = self.map_text_widget.winfo_reqwidth() + 20; _mh = self.map_text_widget.winfo_reqheight() + 40
+        self.map_popup.geometry(f"{_mw}x{_mh}")
+        try:
+            self.map_popup.lift(); self.map_popup.focus_force()
+            self.map_popup.attributes("-topmost", True)
+            self.map_popup.after(400, lambda: self.map_popup and self.map_popup.winfo_exists() and self.map_popup.attributes("-topmost", False))
+        except Exception:
+            self.map_popup.focus_set()
+        def _map_move(delta): self.move(delta); return "break"
+        self.map_popup.bind("<Up>", lambda e: _map_move((0, -1))); self.map_popup.bind("<Down>", lambda e: _map_move((0, 1))); self.map_popup.bind("<Left>", lambda e: _map_move((-1, 0))); self.map_popup.bind("<Right>", lambda e: _map_move((1, 0)))
+        def _forward_key(event):
+            if event.char: self.entry.insert(tk.END, event.char); self.entry.focus_set(); return "break"
+        self.map_popup.bind("<Key>", _forward_key); self.map_popup.bind("<Button-1>", lambda e: self.map_popup.focus_set())
+        self.update_enhanced_map()
+        # Final placement: 20px down from the top, right edge 20px in from the screen's right.
+        # Two passes: first I place it using the size I set, then I MEASURE where the window's
+        # right edge actually landed, frame borders and all, and nudge it so it sits exactly 20px in.
+        # I do this dead last, once the window's fully realized, or the numbers lie to me.
+        try:
+            self.map_popup.update_idletasks()
+            sw = self.map_popup.winfo_screenwidth()
+            x = max(0, sw - _mw - 40)
+            self.map_popup.geometry(f"+{x}+20")
+            self.map_popup.update_idletasks()
+            right = self.map_popup.winfo_rootx() + self.map_popup.winfo_width()
+            err = (sw - 40) - right
+            if abs(err) > 2:
+                x = max(0, x + err)
+                self.map_popup.geometry(f"+{x}+20")
+        except Exception:
+            self.map_popup.geometry("+900+20")
+        def close_map(): self.map_popup.destroy(); self.map_popup = None; self.map_text_widget = None; self.entry.focus_set()
+        self.map_popup.protocol("WM_DELETE_WINDOW", close_map)
+    def update_minimap(self):
+        if not self.player or not self.world: return
+        self.minimap_text.config(state="normal"); self.minimap_text.delete(1.0, tk.END)
+        tags = {"mini_player": "#FFFFFF", "mini_monster": "#FF6B6B", "mini_npc": "#FFD700", "mini_shop": "#FFA500", "mini_subnpc": "#40C4FF", "mini_item": "#E67BFF", "mini_quest": "#4ADE80", "mini_empty": "#888888", "mini_unknown": "#555555", **DIM_SENSE_COLORS}
+        for tag, col in tags.items(): self.minimap_text.tag_config(tag, foreground=col)
+        px, py = self.player.x, self.player.y; start_x = max(1, px - 2); start_y = max(1, py - 2)
+        end_x = min(self.width, start_x + 4); end_y = min(self.height, start_y + 4)
+        self.minimap_text.insert(tk.END, "   ", ("mini_empty",));
+        for x in range(start_x, end_x + 1): self.minimap_text.insert(tk.END, f"{string.ascii_uppercase[x-1]}".center(3), ("mini_empty",))
+        self.minimap_text.insert(tk.END, "\n")
+        for y in range(start_y, end_y + 1):
+            self.minimap_text.insert(tk.END, f"{y:<2} ", ("mini_empty",))
+            for x in range(start_x, end_x + 1):
+                room = self.world.get((x, y), {"visited": False}); symbol, tag = "[ ]", "mini_empty"
+                if (x, y) == (px, py): symbol, tag = "[@]", "mini_player"
+                elif room.get("theme") == "hub" and (x, y) == (1, 1): symbol, tag = "[H]", "mini_npc"
+                elif not room.get("visited"):
+                    sensed = self._sensed(x, y, room)
+                    symbol, tag = sensed if sensed else ("[?]", "mini_unknown")
+                elif room.get("monster"): symbol, tag = "[E]", "mini_monster"
+                elif room.get("npc"):
+                    _n = room["npc"]
+                    if getattr(_n, "is_shop", False): symbol, tag = "[$]", "mini_shop"
+                    elif getattr(_n, "is_subquest", False): symbol, tag = "[S]", "mini_subnpc"
+                    else: symbol, tag = "[N]", "mini_npc"
+                elif room.get("items"): symbol, tag = "[I]", "mini_item"
+                elif room.get("motif") is not None:
+                    solved = (room.get("subquest_done") or (room.get("quest_idx") is not None and room["quest_idx"] < self.player.quest_idx))
+                    if solved: symbol, tag = "[ ]", "mini_empty"
+                    else: symbol, tag = "[Q]", "mini_quest"
+                self.minimap_text.insert(tk.END, symbol, tag)
+            self.minimap_text.insert(tk.END, "\n")
+        self.minimap_text.insert(
+            tk.END, "\nLEGEND:\n@ = You        S = Side-NPC\nE = Enemy      I = Items\nN = Main-NPC   Q = Quest-Room\n$ = Pawn Shop  ? = Unseen\nH = Citadel Hub  [ ] = Empty", ("legend",)); self.minimap_text.config(state="disabled")
+    def toggle_crafting(self):
+        if self._check_if_dead(): return
+        if not self.player: self.append_colored("Start a game to craft!\n", "error"); return
+        if getattr(self, 'crafting_popup', None) and self.crafting_popup and self.crafting_popup.winfo_exists(): self.crafting_popup.deiconify(); self.crafting_popup.lift(); self.crafting_popup.focus_force(); return
+        self.crafting_popup = tk.Toplevel(self.root); self.crafting_popup.title("Crafting Panel"); self._center_popup(self.crafting_popup, 400, 500); self.crafting_popup.minsize(380, 440); self._apply_icon(self.crafting_popup)
+        tk.Label(self.crafting_popup, text="Available Recipes:", font=("Arial", 12, "bold")).pack(pady=(8, 4))
+        listbox = tk.Listbox(self.crafting_popup, font=("Consolas", 10), width=40, height=6)
+        for rec_name in CRAFTING_RECIPES: listbox.insert(tk.END, rec_name)
+        listbox.pack(pady=(2, 4))
+        info_label = tk.Label(self.crafting_popup, text="← select a recipe", justify="left", anchor="nw", wraplength=360); info_label.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 4))
+        def show_recipe_info(event=None):
+            sel = listbox.curselection();
+            if not sel: info_label.config(text="← select a recipe"); return
+            name = listbox.get(sel[0]); data = CRAFTING_RECIPES[name]
+            info = ("Materials:\n  - " + "\n  - ".join(data["materials"]) + f"\n\nEffect: {data['effect']}\n\nDescription: {data['description']}")
+            info_label.config(text=info)
+        listbox.bind("<<ListboxSelect>>", show_recipe_info)
+        def craft_selected():
+            sel = listbox.curselection();
+            if not sel: return
+            recipe_name = listbox.get(sel[0])
+            success, result, consumed_materials = craft_item(recipe_name, self.player.crafting_materials, self.player.pclass)
+            if not success: self.append_colored(f"❌ Crafting failed: {result}\n", "error"); self.root.bell(); return
+            if not consumed_materials and self.player.pclass == "Fabricator Drone": self.append_colored("⚙️ Fabricator Drone kicks in. Materials not consumed!\n", "success")
+            self.root.bell()
+            self.player.inventory.append(recipe_name); self.player.items_crafted += 1; self.player.total_items_collected += 1
+            self.grant_xp(5, "item crafted")
+            self.append_colored(f"🔨 Successfully crafted: {recipe_name}!\n", "success"); self.append_colored(f"   Effect: {result['effect']}\n", "achievement")
+            if recipe_name == "Mega Seed Injector":
+                self.player.max_charge += 10; self.player.charge = self.player.max_charge; self.player.hp = max(1, self.player.hp - 5); self.player.mega_seeds_used += 1
+                self.append_colored("🧠 Mega Seed Injector boosts max charge by 10 but causes nausea (lose 5 HP)!\n", "achievement")
+            elif recipe_name == "Interdimensional Goggles":
+                for pos, rm in self.world.items():
+                    if rm.get("npc") or rm.get("monster") or rm.get("items") or rm.get("motif") is not None: rm["visited"] = True
+                self.append_colored("🌌 Interdimensional Goggles reveal every special room!\n", "achievement"); self.update_enhanced_map()
+            self._recalc_passives(); self.update_info_display(); self.update_enhanced_map(); self.update_minimap(); check_achievements(self.player, self.world, self)
+        tk.Button(self.crafting_popup, text="Craft Selected", width=18, command=craft_selected).pack(side=tk.BOTTOM, pady=(0, 8))
+        def close_crafting(): self.crafting_popup.destroy(); self.crafting_popup = None; self.entry.focus_set()
+        self.crafting_popup.protocol("WM_DELETE_WINDOW", close_crafting)
+    def toggle_journal(self):
+        if self._check_if_dead(): return
+        if not self.player: self.append_colored("Start a game to view your journal!\n", "error"); return
+        if hasattr(self, 'journal_popup') and self.journal_popup and self.journal_popup.winfo_exists(): self.journal_popup.deiconify(); self.journal_popup.lift(); self.journal_popup.focus_force(); return
+        self.journal_popup = tk.Toplevel(self.root); self.journal_popup.title("Cosmic Adventure Journal"); self._center_popup(self.journal_popup, 700, 600); self._apply_icon(self.journal_popup)
+        notebook = ttk.Notebook(self.journal_popup); notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        quest_frame = ttk.Frame(notebook); notebook.add(quest_frame, text="Main Quests"); quest_text = scrolledtext.ScrolledText(quest_frame, font=("Arial", 10), wrap=tk.WORD); quest_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        quest_info = "📜 QUEST JOURNAL\n" + "="*40 + "\n\n"
+        for i, quest in enumerate(EXTENDED_QUESTS):
+            if i < self.player.quest_idx: quest_info += f"✅ COMPLETED: {quest['act']}, {quest['title']}\n   {quest['completion']}\n\n"
+            elif i == self.player.quest_idx:
+                step = self._cur_step()
+                quest_info += f"🎯 CURRENT: {quest['act']}, {quest['title']}\n   Character: {quest['character']}\n"
+                if step is not None:
+                    k = step["kind"]
+                    if k == "talk_rick": status = "Talk to Rick for your gadget and clue."
+                    elif k == "deliver_char": status = f"Deliver Rick's {quest['rick_gift']} to {quest['character']}."
+                    elif k == "retrieve": status = quest['riddle_extra']
+                    else: status = f"Bring the {quest['item']} to Rick."
+                    quest_info += f"   Next step: {status}\n\n"
+                else:
+                    quest_info += "\n"
+            else: quest_info += f"🔒 LOCKED: {quest['act']}, {quest['title']}\n   Comes later in the story.\n\n"
+        quest_text.insert(1.0, quest_info); quest_text.config(state='disabled')
+        side_frame = ttk.Frame(notebook); notebook.add(side_frame, text="Side Quests"); side_text = scrolledtext.ScrolledText(side_frame, font=("Arial", 10), wrap=tk.WORD); side_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        side_info = "🧩 SIDE-QUEST JOURNAL\n" + "="*40 + "\n\n"
+        for sub in EXTENDED_SUBQUESTS:
+            if sub["npc"].lower() not in self.player.subquest_met and sub["npc"].lower() not in self.player.subquest_ack: continue
+            if sub["npc"].lower() in self.player.subquest_ack: side_info += f"✅ COMPLETED: {sub['npc']}\n   Reward piece: {sub['reward_item']}\n\n"
+            else:
+                side_info += f"🎯 CURRENT: {sub['npc']}\n   Needs: {sub['need_item']}\n   How: {sub['key_hint']}\n"
+                if self._find_item_in_list(sub['need_item'], self.player.inventory): side_info += f"   Status: ✅ {sub['need_item']} in hand. Return it to {sub['npc']}.\n\n"
+                else: side_info += "   Status: 🔍 Still working on it…\n\n"
+        if side_info.strip() == "🧩 SIDE-QUEST JOURNAL\n" + "="*40: side_info += "No side-quests discovered yet. Talk to more unique characters!\n"
+        side_text.insert(1.0, side_info); side_text.config(state='disabled')
+        lore_frame = ttk.Frame(notebook); notebook.add(lore_frame, text="Intel"); lore_text = scrolledtext.ScrolledText(lore_frame, font=("Arial", 10), wrap=tk.WORD); lore_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        lore_content = "📋 RICK'S INTEL: FIELD NOTES\n" + "="*40 + "\n\n"
+        if self.player.lore_fragments:
+            for i, lore in enumerate(self.player.lore_fragments, 1): lore_content += f"Fragment {i}:\n📜 {lore}\n\n"
+        else: lore_content += "No intel gathered yet.\n"; lore_content += "Poke around special rooms and you might turn up some weird multiverse intel.\n"
+        lore_text.insert(1.0, lore_content); lore_text.config(state='disabled')
+        inv_frame = ttk.Frame(notebook); notebook.add(inv_frame, text="Inventory & Stats"); inv_text = scrolledtext.ScrolledText(inv_frame, font=("Arial", 10), wrap=tk.WORD); inv_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        inv_content = "🎒 INVENTORY & CHARACTER STATUS\n" + "="*40 + "\n\n"; inv_content += f"Morty  •  {self.player.race}  +  {self.player.pclass}  (Universe: {self.current_save_name or "(none)"})\n"
+        inv_content += f"Health: {self.player.hp}/{self.player.max_hp}\n"; inv_content += f"Charge: {self.player.charge}/{self.player.max_charge}\n"; inv_content += f"Armor: {self.player.armor}\n\n"; inv_content += "🎒 QUEST ITEMS:\n"
+        quest_items = [item for item in self.player.inventory if any(item == q["item"] for q in EXTENDED_QUESTS)]
+        if quest_items:
+            for item in quest_items: inv_content += f"   • {item}\n"
+        else: inv_content += "   None\n"
+        inv_content += "\n🔧 CRAFTING MATERIALS:\n"
+        if self.player.crafting_materials:
+            material_counts = {}; [material_counts.update({material: material_counts.get(material, 0) + 1}) for material in self.player.crafting_materials]
+            for material, count in material_counts.items(): inv_content += f"   • {material} x{count}\n"
+        else: inv_content += "   None\n"
+        inv_content += "\n🌟 SPECIAL ABILITIES:\n"
+        for ability in self.player.special_abilities: inv_content += f"   • {ability}\n"
+        inv_text.insert(1.0, inv_content); inv_text.config(state='disabled')
+        def close_journal(): self.journal_popup.destroy(); self.journal_popup = None; self.entry.focus_set()
+        self.journal_popup.protocol("WM_DELETE_WINDOW", close_journal)
+    def toggle_achievements(self):
+        if self._check_if_dead(): return
+        if not self.player: self.append_colored("Start a game to view achievements!\n", "error"); return
+        if hasattr(self, 'achievements_popup') and self.achievements_popup and self.achievements_popup.winfo_exists(): self.achievements_popup.deiconify(); self.achievements_popup.lift(); self.achievements_popup.focus_force(); return
+        self.achievements_popup = tk.Toplevel(self.root); self.achievements_popup.title("Cosmic Achievements"); self._center_popup(self.achievements_popup, 700, 600); self._apply_icon(self.achievements_popup)
+        main_frame = tk.Frame(self.achievements_popup); main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        unlocked_count = len([a for a in ACHIEVEMENTS if a.unlocked]); total_count = len(ACHIEVEMENTS)
+        progress_frame = tk.LabelFrame(main_frame, text="Achievement Progress", font=("Arial", 12, "bold")); progress_frame.pack(fill=tk.X, pady=(0, 10))
+        tk.Label(progress_frame, text=f"Achievements Unlocked: {unlocked_count}/{total_count}", font=("Arial", 14, "bold")).pack(pady=5)
+        progress_bar = ttk.Progressbar(progress_frame, length=500, mode='determinate'); progress_bar['value'] = (unlocked_count / total_count) * 100 if total_count > 0 else 0; progress_bar.pack(pady=5)
+        percentage = int((unlocked_count / total_count) * 100) if total_count > 0 else 0; tk.Label(progress_frame, text=f"{percentage}% Complete", font=("Arial", 11), fg="blue").pack(pady=2)
+        list_frame = tk.LabelFrame(main_frame, text="All Achievements", font=("Arial", 12, "bold")); list_frame.pack(fill=tk.BOTH, expand=True)
+        achievement_notebook = ttk.Notebook(list_frame); achievement_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        quest_achievements = []; combat_achievements = []; exploration_achievements = []; special_achievements = []
+        for achievement in ACHIEVEMENTS:
+            if "quest" in achievement.name.lower() or "hopper" in achievement.name.lower(): quest_achievements.append(achievement)
+            elif "fighter" in achievement.name.lower() or "cromulon" in achievement.name.lower(): combat_achievements.append(achievement)
+            elif "explorer" in achievement.name.lower() or "collector" in achievement.name.lower(): exploration_achievements.append(achievement)
+            else: special_achievements.append(achievement)
+        categories = [("Quest & Story", quest_achievements), ("Combat", combat_achievements), ("Exploration", exploration_achievements), ("Special", special_achievements)]
+        for cat_name, cat_achievements in categories:
+            if not cat_achievements: continue
+            cat_frame = ttk.Frame(achievement_notebook); achievement_notebook.add(cat_frame, text=cat_name)
+            cat_text = scrolledtext.ScrolledText(cat_frame, font=("Arial", 10), wrap=tk.WORD); cat_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+            cat_content = ""
+            for achievement in cat_achievements:
+                if achievement.unlocked: cat_content += f"🏅 {achievement.name}\n   ✅ UNLOCKED\n   📖 {achievement.description}\n   🎁 Reward: {achievement.reward}\n\n"
+                else:
+                    cat_content += f"🔒 {achievement.name}\n   ❌ LOCKED\n   📖 {achievement.description}\n   🎁 Reward: {achievement.reward}\n"
+                    if self.player:
+                        if "player.quest_idx >= len(EXTENDED_QUESTS)" in achievement.condition: cat_content += f"   📊 Progress: {self.player.quest_idx}/{len(EXTENDED_QUESTS)} main quests completed\n"
+                        elif "len(player.subquest_ack) >= len(EXTENDED_SUBQUESTS)" in achievement.condition: cat_content += f"   📊 Progress: {len(self.player.subquest_ack)}/{len(EXTENDED_SUBQUESTS)} side quests completed\n"
+                        elif "len(player.visited) >= total_rooms" in achievement.condition: cat_content += f"   📊 Progress: {len(self.player.visited)}/{len(self.world)} rooms visited\n"
+                        elif "player.monsters_defeated >= 15" in achievement.condition: cat_content += f"   📊 Progress: {self.player.monsters_defeated}/15 enemies defeated\n"
+                        elif "player.items_crafted >= 3" in achievement.condition: cat_content += f"   📊 Progress: {self.player.items_crafted}/3 items crafted\n"
+                        elif "len(player.lore_fragments) >= app.total_lore_fragments_count" in achievement.condition: cat_content += f"   📊 Progress: {len(self.player.lore_fragments)}/{self.total_lore_fragments_count} lore fragments collected\n"
+                        elif "player.total_items_collected >= 25" in achievement.condition: cat_content += f"   📊 Progress: {self.player.total_items_collected}/25 items collected\n"
+                        elif "player.federation_credits >= 50" in achievement.condition: cat_content += f"   📊 Progress: {self.player.federation_credits}/50 Federation Credits acquired\n"
+                        elif "player.deaths == 0 and game_complete" in achievement.condition: cat_content += f"   📊 Progress: Deaths: {self.player.deaths} (must be 0 at game completion)\n"
+                        elif "cromulon_defeated_count >= 1" in achievement.condition: cat_content += f"   📊 Progress: Cromulons defeated: {self.player.cromulon_defeated_count}/1\n"
+                        elif "'Plumbus' in player.inventory or 'Plumbus' in player.crafting_materials" in achievement.condition: cat_content += f"   📊 Progress: Plumbus acquired: {'Yes' if (self.player.plumbuses_collected >= 1 or 'Plumbus' in self.player.inventory or 'Plumbus' in self.player.crafting_materials or 'Plumbus Repair Kit' in self.player.inventory) else 'No'}\n"
+                        elif "mega_seeds_used >= 1" in achievement.condition: cat_content += f"   📊 Progress: Mega Seeds used: {self.player.mega_seeds_used}/1\n"
+                    cat_content += "\n"
+            cat_text.insert(1.0, cat_content); cat_text.config(state='disabled')
+        stats_frame = tk.LabelFrame(main_frame, text="Current Statistics", font=("Arial", 12, "bold")); stats_frame.pack(fill=tk.X, pady=(10, 0))
+        stats_text = f"Moves: {self.player.moves_taken} | Enemies: {self.player.monsters_defeated} | Crafted: {self.player.items_crafted} | Intel: {len(self.player.lore_fragments)} | Deaths: {self.player.deaths} | Credits: {self.player.federation_credits}" if self.player else "Start a game to track statistics!"
+        tk.Label(stats_frame, text=stats_text, font=("Arial", 9)).pack(pady=5)
+        def close_achievements(): self.achievements_popup.destroy(); self.achievements_popup = None; self.entry.focus_set()
+        self.achievements_popup.protocol("WM_DELETE_WINDOW", close_achievements)
+    def start_new_game(self): self.show_difficulty_selection()
+    def show_difficulty_selection(self):
+        def set_difficulty_and_proceed():
+            selected_difficulty = difficulty_var.get()
+            self.difficulty = DifficultyLevel(selected_difficulty)
+            d.destroy()
+            self.root.after(50, self.setup_game_world)
+        d = tk.Toplevel(self.root)
+        d.title("Select Difficulty")
+        self._center_popup(d, 400, 380)
+        d.resizable(False, False)
+        self._apply_icon(d)
+        tk.Label(d, text="Choose Your Challenge", font=("Arial", 14, "bold")).pack(pady=10)
+        
+        difficulty_var = tk.StringVar(value="normal")
+        difficulties = [
+            ("Easy", "easy", "More health, weaker enemies, clearer hints"),
+            ("Normal", "normal", "Balanced experience for most players"),
+            ("Hard", "hard", "Stronger enemies, cryptic clues, less health"),
+            ("Nightmare", "nightmare", "For masochists only - brutal difficulty")
+        ]
+        
+        for name, value, desc in difficulties:
+            frame = tk.Frame(d)
+            frame.pack(fill=tk.X, padx=20, pady=5)
+            tk.Radiobutton(frame, text=name, variable=difficulty_var, value=value, font=("Arial", 11, "bold")).pack(anchor=tk.W)
+            tk.Label(frame, text=desc, font=("Arial", 9), fg="gray").pack(anchor=tk.W, padx=20)
+            
+        tk.Button(d, text="Begin Adventure", command=set_difficulty_and_proceed, font=("Arial", 12)).pack(pady=20)
+        d.transient(self.root)
+        d.grab_set()
+        self.root.wait_window(d)
+    def _close_all_popups(self):
+        """Tear down every secondary window so a new/loaded game can't keep
+        showing the previous world. Safe to call when nothing is open."""
+        for attr in ("map_popup", "journal_popup", "achievements_popup", "crafting_popup"):
+            win = getattr(self, attr, None)
+            try:
+                if win and win.winfo_exists():
+                    win.destroy()
+            except Exception:
+                pass
+            setattr(self, attr, None)
+        self.map_text_widget = None
+
+    def _sanitize_world(self):
+        """Hard rule: a room that holds an NPC (Rick, a quest-giver, a side-quest
+        character or the shop) or the starting hub can never also hold a monster, so
+        the people you are meant to talk to can never turn into a fight. Runs on a
+        freshly generated world and right after a save loads, so an older or
+        corrupted save repairs itself instead of dropping you into a bogus battle."""
+        if not self.world: return
+        for pos, room in self.world.items():
+            mon = room.get("monster")
+            if not mon: continue
+            protected = (room.get("npc") is not None or pos == (1, 1)
+                         or room.get("quest_idx") is not None or room.get("side_idx") is not None)
+            if protected:
+                room["monster"] = None
+                blurb = f" A {mon.name} lurks here. {getattr(mon, 'description', '')}"
+                if blurb in room.get("desc", ""):
+                    room["desc"] = room["desc"].replace(blurb, "")
+    def setup_game_world(self):
+        # Fresh run: I close any windows left hanging from the last game, the big map especially,
+        # or they'll just keep rendering the OLD world like nothing happened. Clean slate.
+        self._close_all_popups()
+        # I wipe any achievement unlocks left over from a previous game this session, so their
+        # one-time perks don't leak onto your shiny new character. No double-dipping.
+        for a in ACHIEVEMENTS:
+            a.unlocked = False
+        (self.world, self.quest_paths, self.quest_rooms, self.npc_rooms, self.motifs_in_play, total_enemies, self.total_lore_fragments_count) = generate_enhanced_game(self.width, self.height, self.difficulty)
+        self._sanitize_world()
+        self.player = None
+        self.show_character_creation()
+    def ask_new_game(self):
+        if self.player and not messagebox.askyesno("Universe Manager", "Leave this universe? Any unsaved progress here will be lost."): return
+        self.show_save_manager()
+    def ask_load(self):
+        if self.player and not messagebox.askyesno("Universe Manager", "Leave this universe? Any unsaved progress here will be lost."): return
+        self.show_save_manager()
+    def show_character_creation(self):
+        dlg = tk.Toplevel(self.root); dlg.title("Rick's Garage"); self._center_popup(dlg, 480, 470); dlg.transient(self.root); dlg.grab_set(); self._apply_icon(dlg)
+        def start():
+            self.player = Player("Morty", mainvar.get(), attachvar.get(), self.difficulty)
+            save_name = self.current_save_name or "Morty"; self.current_save_name = save_name
+            self._write_save(save_name, announce=False)
+            dlg.destroy(); self.set_button_states(menu=False); self.print_room(); self.update_info_display(); self.update_minimap(); self.entry.focus_set()
+            self.append_colored(f"🌀 Universe '{save_name}' ready. Morty grabs the {mainvar.get()} and clips on the {attachvar.get()}. Now go talk to Rick.\n", "success")
+        def _cycle(combo, update_func, event):
+            letter = event.char.lower()
+            if not letter.isalpha(): return
+            values = combo['values']; cur = combo.current(); start_i = (cur + 1) % len(values); idx = start_i
+            while True:
+                if values[idx].lower().startswith(letter): combo.current(idx); update_func(); return "break"
+                idx = (idx + 1) % len(values)
+                if idx == start_i: return "break"
+        def _cycle_open(event):
+            if event.char.isalpha():
+                combo = event.widget.master.master
+                if combo == main_combo: _cycle(main_combo, update_main_desc, event)
+                elif combo == attach_combo: _cycle(attach_combo, update_attach_desc, event)
+                return "break"
+        dlg.bind_class("TComboboxPopdown", "<Key>", _cycle_open)
+        tk.Label(dlg, text="The ship is dead, the bench is buried in junk, and Rick clearly has not slept. He jabs a thumb at the gear scattered across the workbench. \"Before you set one foot through a portal, Morty, kit yourself out. Take one of my gadgets and clip an attachment onto it. Choose like your life depends on it, because the second you step out there it absolutely does.\"", font=("Arial", 10), justify="left", wraplength=450).grid(row=0, column=0, columnspan=2, sticky=tk.W, padx=12, pady=(12, 8))
+        tk.Label(dlg, text="Main Gadget:", font=("Arial", 12)).grid(row=1, column=0, sticky=tk.W, padx=10, pady=5)
+        mainvar = tk.StringVar(value=random.choice([r["name"] for r in EXPANDED_RACES])); main_combo = ttk.Combobox(dlg, textvariable=mainvar, width=20, font=("Arial", 11), state="readonly")
+        main_combo['values'] = [r["name"] for r in EXPANDED_RACES]; main_combo.grid(row=1, column=1, padx=10, pady=5)
+        main_desc = tk.Text(dlg, height=4, width=54, font=("Arial", 9), wrap=tk.WORD, state="disabled"); main_desc.grid(row=2, column=0, columnspan=2, padx=10, pady=5)
+        def update_main_desc(event=None):
+            data = next(r for r in EXPANDED_RACES if r["name"] == mainvar.get()); main_desc.config(state="normal"); main_desc.delete(1.0, tk.END)
+            main_desc.insert(1.0, data['special']); main_desc.config(state="disabled")
+        main_combo.bind('<<ComboboxSelected>>', update_main_desc); main_combo.bind('<Key>', lambda e: _cycle(main_combo, update_main_desc, e)); update_main_desc()
+        tk.Label(dlg, text="Attachment:", font=("Arial", 12)).grid(row=3, column=0, sticky=tk.W, padx=10, pady=5)
+        attachvar = tk.StringVar(value=random.choice([c["name"] for c in EXPANDED_CLASSES])); attach_combo = ttk.Combobox(dlg, textvariable=attachvar, width=20, font=("Arial", 11), state="readonly")
+        attach_combo['values'] = [c["name"] for c in EXPANDED_CLASSES]; attach_combo.grid(row=3, column=1, padx=10, pady=5)
+        attach_desc = tk.Text(dlg, height=4, width=54, font=("Arial", 9), wrap=tk.WORD, state="disabled"); attach_desc.grid(row=4, column=0, columnspan=2, padx=10, pady=5)
+        def update_attach_desc(event=None):
+            data = next(c for c in EXPANDED_CLASSES if c["name"] == attachvar.get()); attach_desc.config(state="normal"); attach_desc.delete(1.0, tk.END)
+            attach_desc.insert(1.0, data['special']); attach_desc.config(state="disabled")
+        attach_combo.bind('<<ComboboxSelected>>', update_attach_desc); attach_combo.bind('<Key>', lambda e: _cycle(attach_combo, update_attach_desc, e)); update_attach_desc()
+        tk.Label(dlg, text=f"Difficulty: {self.difficulty.value.title()}    •    Universe: {self.current_save_name or '(none)'}", font=("Arial", 11, "bold")).grid(row=5, column=0, columnspan=2, pady=10)
+        tk.Button(dlg, text="Begin", command=start, font=("Arial", 14), bg="#4ADE80", fg="white").grid(row=6, column=0, columnspan=2, pady=16)
+        main_combo.focus_set()
+    def print_room(self):
+        if not self.player: return
+        x, y = self.player.x, self.player.y; room = self.world[(x, y)]; room["visited"] = True; self.player.visited.add((x, y)); self.player.teleport_locations.add((x, y))
+        if self.player.pclass == "Holo-Mapper" and random.random() < 0.20:
+            unvisited_neighbors = [(x+dx, y+dy) for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)] if (x+dx, y+dy) in self.world and (x+dx, y+dy) not in self.player.visited]
+            if unvisited_neighbors:
+                revealed_room_pos = random.choice(unvisited_neighbors); self.world[revealed_room_pos]["visited"] = True; self.player.visited.add(revealed_room_pos)
+                self.append_colored(f"🗺️ Holo-Mapper reveals a nearby area: {to_letter_number(revealed_room_pos[0], revealed_room_pos[1])}\n", "achievement"); self.update_enhanced_map(); self.update_minimap()
+        self.text.config(state='normal'); self.text.delete(1.0, tk.END); self.text.config(state='disabled')
+        self.append_colored(f"\n== Location {to_letter_number(x, y)} ==\n", "quest")
+        self.append_colored(f"{room['desc']}\n")
+        if "hidden_lore" in room and not room.get("lore_discovered", False): self.append_colored("📋 Something here catches your eye. There's more to this place than it lets on.\n", "lore")
+        if room["items"]: self.append_colored("🎒 You see: ", "success"); self.append_colored(", ".join(room["items"]) + "\n")
+        elif room.get("looted"): self.append_colored(f"🫳 Nothing left here. You already grabbed {self._np(room['looted'][-1])} from this spot.\n", "lore")
+        if room["npc"]: self.append_colored(f"👤 {room['npc'].name} is here.\n", "achievement" if room['npc'].is_subquest else "quest")
+        if room["monster"]: self.append_colored(f"⚔️ DANGER: {room['monster'].name} blocks your path! ", "combat"); self.append_colored(f"(HP: {room['monster'].hp}/{room['monster'].max_hp})\n", "combat")
+        if room.get("monster") is None and room.get("last_defeated_monster"): self.append_colored(f"💀 You see the remains of a {room['last_defeated_monster']} here.\n", "lore")
+        exits = [];
+        if y > 1: exits.append("north")
+        if y < self.height: exits.append("south")
+        if x > 1: exits.append("west")
+        if x < self.width: exits.append("east")
+        self.append_colored(f"🚪 Exits: {', '.join(exits)}\n")
+        check_achievements(self.player, self.world, self); self.update_info_display(); self.update_minimap()
+    def scan_room(self):
+        if self._check_if_dead(): return
+        if not self.player: self.append_colored("Start a game first!\n", "error"); return
+        x, y = self.player.x, self.player.y; room = self.world[(x, y)]
+        
+        if self.player.race != "Recon Visor":
+            self.append_colored("You need the Recon Visor equipped to scan a room.\n", "error")
+            self.root.bell()
+            return
+            
+        self.append_colored("\n🔍 SCAN RESULTS:\n", "achievement")
+        if room.get("motif") is not None:
+            motif_data = EXTENDED_MOTIFS[room["motif"]]; self.append_colored(f"   Motif detected: {motif_data['motif']}\n", "lore")
+        if room.get("quest_idx") is not None: self.append_colored(f"   Quest significance: Level {room['quest_idx'] + 1}\n", "quest")
+        if room.get("hidden_lore") and not room.get("lore_discovered"): self.append_colored("   Hidden lore fragment detected!\n", "lore")
+        if room.get("special_interactions"): self.append_colored(f"   Special interactions: {', '.join(room['special_interactions'])}\n", "success")
+        adjacent_monsters = sum(1 for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)] if (x + dx, y + dy) in self.world and self.world[(x + dx, y + dy)].get("monster"))
+        if adjacent_monsters > 0: self.append_colored(f"   ⚠️ {adjacent_monsters} {'enemy' if adjacent_monsters == 1 else 'enemies'} detected nearby!\n", "combat")
+        else: self.append_colored("   ✅ No immediate dangers detected.\n", "success")
+        self.entry.focus_set()
+    def discover_lore(self):
+        if not self.player: return
+        room = self.world[(self.player.x, self.player.y)]
+        if "hidden_lore" in room and not room.get("lore_discovered", False):
+            lore = room["hidden_lore"]; self.player.lore_fragments.append(lore); room["lore_discovered"] = True
+            self.append_colored("📋 You search the area and turn up some intel:\n", "achievement"); self.append_colored(f"📜 {lore}\n", "lore")
+            self.append_colored(f"Intel gathered: {len(self.player.lore_fragments)}.\n", "success")
+            self.grant_xp(3, "intel uncovered"); check_achievements(self.player, self.world, self)
+        else: self.append_colored(f"Nothing useful to search here, {self.player.name}. Move on.\n")
+    def _find_pos(self, predicate):
+        """Return the first world coordinate whose room satisfies predicate, else None."""
+        for pos, rm in self.world.items():
+            if predicate(pos, rm):
+                return pos
+        return None
+
+    def _compass_to(self, target):
+        """Human-readable compass nudge from the player toward target coords."""
+        if not target:
+            return ""
+        tx, ty = target; px, py = self.player.x, self.player.y
+        if (tx, ty) == (px, py):
+            return "right where you're standing"
+        ns = "north" if ty < py else ("south" if ty > py else "")
+        ew = "west" if tx < px else ("east" if tx > px else "")
+        direction = (ns + ew) if (ns and ew) else (ns or ew)  # e.g. northwest, east, that kind of thing.
+        steps = abs(tx - px) + abs(ty - py)
+        return f"to the {direction} (~{steps} room{'s' if steps != 1 else ''} away)"
+
+    def show_hint(self, event=None):
+        p = self.player
+        if not p: self.append_colored("You don't even have a baseline reality yet.\n", "lore"); return
+        step = self._cur_step()
+        if step is None: self.append_colored("🏁 The OMNI-CORE is finished. That thread's cut. Explore or wrap up side quests.\n", "success"); return
+        ch = EXTENDED_QUESTS[step["ci"]]; kind = step["kind"]
+        self.append_colored(f"📖 {ch['act']}: {ch['title']}\n", "quest")
+        rick_pos = self._find_pos(lambda pos, rm: rm.get("npc") and getattr(rm["npc"], "is_rick", False))
+        char_pos = self._find_pos(lambda pos, rm: rm.get("npc") and not getattr(rm["npc"], "is_rick", False) and not rm["npc"].is_subquest and rm["npc"].name == ch["character"])
+        if kind == "talk_rick":
+            self.append_colored("Talk to Rick for your next gadget and clue.\n", "lore")
+            if rick_pos: self.append_colored(f"🧭 Rick is {self._compass_to(rick_pos)}.\n", "lore")
+        elif kind == "deliver_char":
+            self.append_colored(f"Take Rick's {ch['rick_gift']} to {ch['character']}.\n", "lore")
+            if char_pos: self.append_colored(f"🧭 {ch['character']} is {self._compass_to(char_pos)}.\n", "lore")
+        elif kind == "retrieve":
+            motif_pos = self._find_pos(lambda pos, rm: rm.get("quest_idx") == step["ci"] and rm.get("motif") is not None)
+            self.append_colored(f"{ch['riddle_extra']}\n", "lore")
+            if motif_pos: self.append_colored(f"🧭 The place to {_motif_verb(ch['motif'])} lies {self._compass_to(motif_pos)}.\n", "lore")
+        elif kind == "deliver_rick":
+            self.append_colored(f"Bring the {ch['item']} back to Rick. He'll forge the next OMNI-CORE part.\n", "lore")
+            if rick_pos: self.append_colored(f"🧭 Rick is {self._compass_to(rick_pos)}.\n", "lore")
+    def handle_combat(self, monster, damage_override=None, stun_monster_for_turn=False, player_strikes=1):
+        """One round of combat. player_strikes > 1 means the player lands several
+        hits THIS turn (e.g. echo_scream) before the monster gets its single
+        retaliation, not multiple full rounds."""
+        p = self.player
+        combat_log = []   # Always initialize it. Don't make me explain why.
+
+        # ===== You hitting the monster. Could be several strikes in one turn. =====
+        if p.stunned_for_next_turn:
+            p.stunned_for_next_turn = False
+            combat_log.append(
+                "🚓 You're still dealing with interdimensional police paperwork and miss your chance to attack this round!"
+            )
+        else:
+            for _ in range(max(1, player_strikes)):
+                base_player_attack = PLAYER_BASE_DAMAGE + p.damage_bonus + random.randint(-1, 1)
+                if damage_override is not None:
+                    base_player_attack = damage_override
+                dmg_to_mon = max(1, base_player_attack)
+                monster.hp -= dmg_to_mon
+                combat_log.append(
+                    f"You attack {monster.name} for {dmg_to_mon} damage! "
+                    f"({monster.name} HP: {max(monster.hp,0)}/{monster.max_hp})"
+                )
+                if monster.hp <= 0:
+                    break
+        if monster.hp <= 0:
+            combat_log.append(f"{monster.name} is defeated!")
+            # Something died: do the world bookkeeping first, before anything else.
+            x, y = p.x, p.y
+            self.world[(x, y)]["monster"] = None
+            self.world[(x, y)]["last_defeated_monster"] = monster.name
+            p.monsters_defeated += 1
+            if "Cromulon" in monster.name:
+                p.cromulon_defeated_count += 1
+            p.meeseeks_attack_doubled = False
+            self.update_enhanced_map(); self.update_minimap()
+            # Print the attack lines FIRST, killing blow included. Drama matters.
+            for line in combat_log:
+                self.append_colored(line + "\n", "combat")
+            # ...THEN the loot drop.
+            if monster.loot:
+                credit_drops = monster.loot.count("Federation Credits")
+                item_loot = [it for it in monster.loot if it != "Federation Credits"]
+                if item_loot:
+                    self.append_colored(
+                        f"The {monster.name} dropped: {', '.join(item_loot)}\n", "success"
+                    )
+                for it in item_loot:
+                    if any(it in r["materials"] for r in CRAFTING_RECIPES.values()):
+                        p.crafting_materials.append(it)
+                    else:
+                        p.inventory.append(it)
+                    p.total_items_collected += 1
+                if credit_drops:
+                    gained = sum(random.randint(1, 5) for _ in range(credit_drops))
+                    p.federation_credits += gained
+                    p.total_items_collected += credit_drops
+                    self.append_colored(f"💰 You loot {gained} Federation Credits off the {monster.name}. (Total: {p.federation_credits})\n", "success")
+                self._recalc_passives()
+            else:
+                self.append_colored("No loot dropped.\n", "lore")
+            # ...THEN the XP gain. Order of operations, Morty.
+            self.grant_xp(monster.max_hp, f"defeated {monster.name}")
+            self.update_info_display()
+            self._check_if_dead() # If you died this turn, lock input instantly. Game over means game over.
+            return
+        
+        # ===== The monster hitting back. One retaliation, that's it. =====
+        # Either it was a one-turn stun (mind_wipe) OR the thing's still got a multi-turn stun from the Mindblower.
+        if stun_monster_for_turn or getattr(monster, "stun_turns", 0) > 0:
+            if getattr(monster, "stun_turns", 0) > 0:
+                monster.stun_turns -= 1
+                combat_log.append(
+                    f"🧠 {monster.name} is still dazed from the Mindblower and can't act this turn!"
+                )
+            else:
+                combat_log.append(
+                    f"🧠 {monster.name} is stunned and cannot attack this turn!"
+                )
+        else:
+            # Butter Robot's little disorient gimmick.
+            butter_robot_disorient = (
+                p and p.race == "Brainalyzer" and random.random() < 0.10
+            )
+            if butter_robot_disorient:
+                combat_log.append(
+                    f"🤖 The Butter Robot's existential dread disorients {monster.name}, making it miss!"
+                )
+            else:
+                total_armor = p.armor
+                base_damage_value = monster.damage
+                # If it's still woozy from mind_wipe, I halve its next hit and clear the flag. One-time mercy.
+                if getattr(monster, "weakened_next_attack", False):
+                    base_damage_value = max(1, base_damage_value // 2)
+                    monster.weakened_next_attack = False
+                    combat_log.append(
+                        f"💫 {monster.name} is still trying to remember its own name after your mind wipe. "
+                        "Its attack is half-hearted."
+                    )
+                # ===== Special attack logic. The flashy moves. =====
+                use_special = (
+                    getattr(monster, "special_attack_chance", 0.0) > 0.0
+                    and random.random() < monster.special_attack_chance
+                )
+                if use_special and monster.special_attack_name:
+                    combat_log.append(
+                        f"🚨 {monster.name} uses {monster.special_attack_name}!"
+                    )
+                    special_damage = monster.damage
+                    if monster.special_attack_name == "Suppressing Fire":
+                        special_damage = int(monster.damage * 1.5)
+                        combat_log.append("   It lays down a barrage of blaster fire!")
+                    elif monster.special_attack_name == "SHOW ME WHAT YOU GOT":
+                        # Normal damage, but it drains your Charge. Power costs.
+                        combat_log.append("   A psychic shockwave smashes into your brain!")
+                        drain = 5
+                        old_charge = p.charge
+                        p.charge = max(0, p.charge - drain)
+                        if p.charge < old_charge:
+                            combat_log.append(f"   Your Charge drops by {drain}!")
+                    elif monster.special_attack_name == "Telepathic Assault":
+                        special_damage = int(monster.damage * 0.5)
+                        combat_log.append("   Its thoughts invade your mind, making you dizzy!")
+                    elif monster.special_attack_name == "Summon Police":
+                        special_damage = int(monster.damage * 0.8)
+                        combat_log.append("   'I control the police!' he bellows. You're suddenly being arrested.")
+                        p.stunned_for_next_turn = True
+                    # End of the specials.
+                    dmg_to_player = max(
+                        1, special_damage + random.randint(-1, 1) - total_armor
+                    )
+                else:
+                    # A plain old normal attack.
+                    dmg_to_player = max(
+                        1, base_damage_value + random.randint(-1, 1) - total_armor
+                    )
+                p.hp -= dmg_to_player
+                combat_log.append(
+                    f"{monster.name} attacks you for {dmg_to_player} damage! "
+                    f"(Your HP: {max(p.hp,0)}/{p.max_hp})"
+                )
+                if p.hp <= 0:
+                    combat_log.append("You are defeated!")
+                    p.deaths += 1
+        # Print the log and refresh the UI, one line at a time.
+        for line in combat_log:
+            self.append_colored(line + "\n", "combat")
+        self.update_info_display()
+        self._check_if_dead() # If you died this turn, lock input instantly. Same deal as before.
+    def _handle_portal_jump(self, parts):
+        p = self.player;
+        if "Portal Gun (Replica)" not in p.inventory: self.append_colored("❌ You need a 'Portal Gun (Replica)' to jump dimensions!", "error"); return
+        cost_charge = ATTACK_COST["portal_jump"]["charge"]
+        if p.portal_gun_no_charge_cost: cost_charge = 0; self.append_colored("🌟 Portal jump is FREE!", "success")
+        if p.charge < cost_charge: self.append_colored(f"❌ Not enough charge to open a portal. Needs {cost_charge}.", "error"); return
+        if len(parts) < 3: self.append_colored("Usage: portal_jump <X> <Y> (e.g. portal_jump B 4)\n", "error"); self.append_colored("Known locations: " + ", ".join(sorted([to_letter_number(x,y) for x,y in p.teleport_locations])) + "\n", "lore"); return
+        try: target_x = parse_coord(parts[1]); target_y = parse_coord(parts[2])
+        except (ValueError, IndexError): self.append_colored("❌ Invalid coordinates. Use format: portal_jump <X> <Y>\n", "error"); return
+        if (target_x, target_y) not in p.teleport_locations: self.append_colored(f"❌ You haven't visited {to_letter_number(target_x, target_y)} yet. You can only jump to known locations.\n", "error"); return
+        
+        target_room = self.world[(target_x, target_y)]
+        if target_room.get("monster"):
+            self.append_colored(
+                f"⚠️ Warning: Sensors detect a hostile presence in {to_letter_number(target_x, target_y)}. Proceed with caution.\n", 
+                "combat"
+            )
+            
+        p.charge -= cost_charge; p.last_room = (p.x, p.y); p.x, p.y = target_x, target_y
+        p.moves_taken += 1; self.append_colored(f"🌐 You activate the Portal Gun and jump to {to_letter_number(target_x, target_y)}!\n", "success")
+        self.print_room(); self.update_enhanced_map(); self.update_minimap(); self.update_info_display()
+    
+    # ===== Feature 2.2: hooking events into movement. Stuff that fires when you walk. =====
+    def move(self, delta):
+        if self._check_if_dead(): return
+        if not self.player: return
+        dx, dy = delta; nx, ny = self.player.x + dx, self.player.y + dy
+        if 1 <= nx <= self.width and 1 <= ny <= self.height:
+            if self.world[(self.player.x, self.player.y)].get("monster"): self.append_colored("⚔️ An enemy blocks your path! You must fight or flee!\n", "combat"); self.root.bell(); return
+            self.player.last_room = (self.player.x, self.player.y); self.player.x, self.player.y = nx, ny; self.player.moves_taken += 1
+            # Phoenix Implant passive: you regenerate 1 HP every 5 real moves. Slow and steady.
+            if self.player.race == "Phoenix Implant" and self.player.moves_taken % 5 == 0 and 0 < self.player.hp < self.player.max_hp:
+                self.player.hp = min(self.player.hp + 1, self.player.max_hp)
+                self.append_colored("💚 The Phoenix Implant knits you back together (+1 HP).\n", "success")
+            self.print_room(); self.update_enhanced_map(); self.player.teleport_locations.add((self.player.x, self.player.y))
+            self._trigger_random_event()
+        else: self.append_colored("🚫 " + self._quip("no_exit") + "\n", "error"); self.root.bell()
+        self.entry.delete(0, tk.END); self.entry.focus_set()
+    def process_command(self, event=None):
+        if hasattr(self, "_close_completion_popup"): self._close_completion_popup()
+        cmd = self.entry.get().strip(); self.entry.delete(0, tk.END)
+        if not cmd or not self.player: return
+        if self._check_if_dead(): return
+        p = self.player; x, y = p.x, p.y; room = self.world[(x, y)]; parts = cmd.lower().split(); command = parts[0]
+        
+        motif_alias = {"watch": "observe", "bite": "eat", "workbench": "tinker", "bench": "tinker", "couch": "negotiate", "rummage": "scavenge", "loot": "scavenge", "barter": "haggle", "deal": "haggle", "inspect": "examine", "study": "examine", "probe": "investigate", "analyze": "investigate", "summon": "call", "pick": "harvest", "pluck": "harvest", "drink": "order", "sip": "order", "payoff": "bribe", "grease": "bribe", "sync": "connect", "link": "connect",}
+        if command in motif_alias: command = motif_alias[command]; parts[0] = command
+        # Combat moves get typed straight. Here I just normalize your friendly spelling variants.
+        if command in DIRECT_ALIAS: command = DIRECT_ALIAS[command]; parts = [command]
+        # e.g. 'echo scream', 'cast plasma_blast', 'fire plasma', 'discover lore'. I forgive a lot.
+        if command in ("echo", "cast", "fire") and len(parts) >= 2:
+            command = DIRECT_ALIAS.get(parts[1], parts[1]); parts = [command]
+        if command == "discover" and len(parts) >= 2 and parts[1] == "lore":
+            command = "discover_lore"; parts = ["discover_lore"]
+
+        # =====
+        # DEVELOPER CHEAT CODES. Yeah I left cheats in. I'm the developer. Don't lecture me, Morty.
+        # =====
+        if command == "8675309":  # Rip the whole map open. See everything.
+            for pos, rm in self.world.items():
+                rm["visited"] = True; p.visited.add(pos); p.teleport_locations.add(pos)
+            self.append_colored("🧠 Cheat: all rooms revealed.\n", "success")
+            self.update_enhanced_map(); self.update_minimap(); self.update_info_display(); return
+        if command == "uuddlrlrbastart":  # Vacuum up every loose item on the map. Finders keepers.
+            scooped = 0
+            for pos, rm in self.world.items():
+                for it in rm["items"][:]:
+                    if it == "Federation Credits": p.federation_credits += random.randint(5, 15)
+                    elif any(it in r["materials"] for r in CRAFTING_RECIPES.values()): p.crafting_materials.append(it)
+                    else: p.inventory.append(it)
+                    p.total_items_collected += 1; scooped += 1
+                    self._strip_found_sentence(rm, it); rm["items"].remove(it)
+                    rm["visited"] = True; p.visited.add(pos)
+            self.append_colored(f"🍺 Cheat: {scooped} loose item(s) collected.\n", "success")
+            self._recalc_passives(); self.update_enhanced_map(); self.update_minimap(); self.update_info_display()
+            check_achievements(p, self.world, self); return
+        if command == "mr5niper5ux":  # One-shot every enemy and loot the corpses. Efficient.
+            wiped = grabbed = 0
+            for pos, rm in self.world.items():
+                if rm.get("monster"):
+                    mon = rm["monster"]
+                    for it in (mon.loot or [])[:]:
+                        if it == "Federation Credits": p.federation_credits += 1
+                        elif any(it in r["materials"] for r in CRAFTING_RECIPES.values()): p.crafting_materials.append(it)
+                        else: p.inventory.append(it)
+                        p.total_items_collected += 1; grabbed += 1
+                    if "Cromulon" in mon.name: p.cromulon_defeated_count += 1
+                    mon.loot.clear()
+                    rm["last_defeated_monster"] = mon.name; rm["monster"] = None
+                    rm["visited"] = True; p.visited.add(pos); wiped += 1
+            p.monsters_defeated += wiped
+            self.append_colored(f"💀 Cheat: {wiped} enemies evaporated; {grabbed} item(s) collected.\n", "success")
+            self._recalc_passives(); self.update_enhanced_map(); self.update_minimap(); self.update_info_display()
+            check_achievements(p, self.world, self); return
+        if command == "ucdclcrc":  # Hand yourself every craftable gadget. Skip the homework.
+            crafted_now = []
+            for itm in CRAFTING_RECIPES:
+                if itm not in p.inventory:
+                    p.inventory.append(itm); crafted_now.append(itm)
+                    p.items_crafted += 1; p.total_items_collected += 1
+            self.append_colored(f"🔧 Cheat: {len(crafted_now)} gadget(s) granted: {', '.join(crafted_now) if crafted_now else '(already had them all)'}.\n", "success")
+            self._recalc_passives(); self.update_info_display(); self.update_enhanced_map(); self.update_minimap()
+            check_achievements(p, self.world, self); return
+
+        # Movement via text commands. North, south, you get it.
+        if command in ["north", "n", "up"]:
+            self.move((0, -1))
+            return
+        elif command in ["south", "s", "down"]:
+            self.move((0, 1))
+            return
+        elif command in ["west", "w", "left"]:
+            self.move((-1, 0))
+            return
+        elif command in ["east", "e", "right"]:
+            self.move((1, 0))
+            return
+        
+        # ===== Feature 1.4: shop and talk logic. Spending money and yapping. =====
+        if command in ["talk", "list", "buy", "sell"]:
+            if room.get("npc") and room["npc"].name == "Glexo Slimslom":
+                self._handle_shop_interaction(command, parts)
+            elif command == "talk":
+                if not room["npc"]: self.append_colored("🗣️ " + self._quip("no_one") + "\n", "error"); self.root.bell(); return
+                npc = room["npc"]
+                if getattr(npc, "is_rick", False): self.handle_rick_dialog(npc)
+                elif npc.is_subquest: self.handle_subquest_dialog(npc, room)
+                else: self.handle_chapter_char_dialog(npc)
+            else:
+                self.append_colored("You can only do that at a shop.\n", "error"); self.root.bell()
+            return
+        # ===== End of the shop logic. =====
+        
+        elif command in COMBAT_MOVES:
+            monster = room.get("monster")
+            if command == "show_me_what_you_got" and p.race != "Neutrino Bomb":
+                self.append_colored("❌ That blast needs the Neutrino Bomb equipped.\n", "error"); self.root.bell(); return
+            if not monster:
+                # No enemy here, so you just flail around like an idiot. It still burns the move's cost,
+                # but nothing in the world, NPCs, or quests actually changes. Swing at ghosts, sure.
+                self._comedic_whiff(command, room); return
+            cost = ATTACK_COST[command]
+            if not self._consume_resources(charge=cost["charge"], hp=cost["hp"], xp=cost["xp"]):
+                return  # Couldn't afford it, so no attack happens. Broke, Morty.
+            if command == "plasma_blast":
+                self.handle_combat(monster, damage_override=PLAYER_BASE_DAMAGE * 2 + p.damage_bonus + random.randint(0, 2))
+            elif command == "mind_wipe":
+                monster.weakened_next_attack = True
+                self.handle_combat(monster, damage_override=PLAYER_BASE_DAMAGE + p.damage_bonus + random.randint(0, 1), stun_monster_for_turn=True)
+            elif command == "show_me_what_you_got":
+                self.handle_combat(monster, damage_override=PLAYER_BASE_DAMAGE * 3 + p.damage_bonus + random.randint(0, 3))
+            elif command == "echo_scream":
+                self.append_colored("You unleash a devastating echo scream!\n", "combat")
+                self.handle_combat(monster, player_strikes=2)  # Two of your hits, but only ONE retaliation. Math in your favor for once.
+            return
+        elif command == "attack":
+            monster = room.get("monster")
+            if monster:
+                self.handle_combat(monster)
+                return
+            else:
+                self._comedic_whiff("attack", room); return
+        elif command == "flee":
+            if room.get("monster"):
+                p.meeseeks_attack_doubled = False  # Always reset it. Every time.
+                if random.random() < 0.7:
+                    self.append_colored("💨 You successfully flee from combat!\n", "success")
+                    last_x, last_y = p.last_room
+                    if abs(last_x - x) + abs(last_y - y) == 1 and (1 <= last_x <= self.width) and (1 <= last_y <= self.height): 
+                        p.x, p.y = last_x, last_y; self.print_room(); self.update_enhanced_map()
+                    else:
+                        possible_moves = [(dx, dy) for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)] if 1 <= x + dx <= self.width and 1 <= y + dy <= self.height]
+                        if possible_moves: 
+                            dx, dy = random.choice(possible_moves); p.x, p.y = x + dx, y + dy; self.print_room(); self.update_enhanced_map()
+                else: self.append_colored("💥 Failed to flee! The enemy attacks!\n", "combat"); self.handle_combat(room["monster"])
+            else: self.append_colored("❌ Nothing to flee from.\n", "error"); self.root.bell()
+            return
+        elif command == "get":
+            if not room["items"]: self.append_colored("🤲 " + self._quip("nothing_to_take") + "\n", "error"); self.root.bell(); return
+            if len(parts) > 1:
+                typed_raw = " ".join(parts[1:]).strip()
+                if self._normalize_text(typed_raw) in {"federation credits", "credits", "credit"}:
+                    if "Federation Credits" in room["items"]:
+                        credits_amount = random.randint(5, 15);
+                        if any(a.name == "Schmeckle Millionaire" and a.unlocked for a in ACHIEVEMENTS): credits_amount += (credits_amount // 10) * 2
+                        p.federation_credits += credits_amount; room["items"].remove("Federation Credits"); self._strip_found_sentence(room, "Federation Credits"); p.total_items_collected += 1
+                        check_achievements(p, self.world, self); self.update_info_display(); self.print_room(); self.append_colored(f"💰 You collect {credits_amount} Federation Credits. Total: {p.federation_credits}\n", "success"); return
+                    else: self.append_colored("💸 " + self._quip("nothing_to_take") + "\n", "error"); self.root.bell(); return
+                match = self._find_item_in_list(typed_raw, room["items"])
+                if match: self.get_specific_item(match)
+                else: self.append_colored(f"🤲 There's no \"{typed_raw}\" here, {self.player.name}. You're grabbing at stuff that doesn't exist again.\n", "error"); self.root.bell()
+            else: self.get_first_available_item()
+            return
+        elif command == "give":
+            if len(parts) < 2: self.append_colored("Give what? Usage: give <item name>\n", "error"); self.root.bell(); return
+            if not room.get("npc"): self.append_colored("🤝 " + self._quip("no_one") + "\n", "error"); self.root.bell(); return
+            typed_raw = " ".join(parts[1:]).strip(); inv_match = self._find_item_in_list(typed_raw, p.inventory)
+            if not inv_match: self.append_colored("🎒 " + self._quip("dont_have", typed_raw) + "\n", "error"); self.root.bell(); return
+            npc = room["npc"]; item_to_give = inv_match
+            # ===== Giving to me: only the current chapter's find-item, and only on the deliver step. =====
+            if getattr(npc, "is_rick", False):
+                step = self._cur_step()
+                if step and step["kind"] == "deliver_rick":
+                    ch = EXTENDED_QUESTS[step["ci"]]
+                    if self._normalize_text(item_to_give) == self._normalize_text(ch["item"]):
+                        self.root.bell(); p.inventory.remove(item_to_give); self._install_core_part(ch); return
+                self.append_colored(f'Rick waves you off. "I don\'t need {self._np(item_to_give, True)} right now, {self.player.name}."\n', "lore"); return
+            # ===== Giving to a chapter character: only my gadget, and only on the deliver step. =====
+            if not npc.is_subquest:
+                step = self._cur_step()
+                if step and step["kind"] == "deliver_char" and npc.name == step.get("to"):
+                    ch = EXTENDED_QUESTS[step["ci"]]
+                    if self._normalize_text(item_to_give) == self._normalize_text(ch["rick_gift"]):
+                        self.root.bell(); p.inventory.remove(item_to_give)
+                        self.append_colored(self._q(ch["char_need"]) + "\n", "quest")
+                        self._advance_step(); self.grant_xp(10, "delivered Rick's gadget"); self.update_info_display(); return
+                self.append_colored(f"{npc.name} doesn't need {self._np(item_to_give, True)} right now.\n", "lore"); return
+            # ===== Side quest: hand over the NEED item to score a unique crafting reward. =====
+            subq = npc.subqdata
+            if self._normalize_text(item_to_give) == self._normalize_text(subq["need_item"]):
+                if npc.name.lower() in p.subquest_ack: self.append_colored(f"{npc.name} already thanked you.\n", "lore"); return
+                self.root.bell(); p.inventory.remove(item_to_give); p.subquest_ack.add(npc.name.lower()); room["subquest_done"] = True
+                reward = subq["reward_item"]; p.crafting_materials.append(reward)
+                self.append_colored(f"{npc.name} {subq['reward_line']}\n", "achievement")
+                self.append_colored(f"🧩 You received a unique crafting piece: {reward}.\n", "success")
+                self.grant_xp(20, "side quest complete"); self.update_info_display(); check_achievements(p, self.world, self); return
+            else:
+                self.append_colored(f'{npc.name}: "That\'s not my {subq["need_item"]}."\n', "lore"); return
+        elif command == "use":
+            if len(parts) < 2: self.append_colored("❌ Use what?\n", "error"); self.root.bell(); return
+            typed_raw = " ".join(parts[1:]).strip(); inv_match = self._find_item_in_list(typed_raw, p.inventory)
+            if self._normalize_text(typed_raw) in {"energy cell", "energy cells"}:
+                item_name = "Energy Cell"; source = None
+                if item_name in p.inventory: p.inventory.remove(item_name); source = "inventory"
+                elif item_name in p.crafting_materials: p.crafting_materials.remove(item_name); source = "parts"
+                if source:
+                    charge_gain = 10;
+                    if p.pclass == "Dark Matter Cell": charge_gain += 5; self.append_colored("🔧 Dark Matter Cell supercharge. That cell kicks harder (+5).\n", "success")
+                    before = p.charge; p.charge = min(p.max_charge, p.charge + charge_gain); gained = p.charge - before
+                    self.append_colored(f"🔋 You slot an Energy Cell ({source}). Charge +{gained}.\n", "success"); self.update_info_display(); return
+                else: self.append_colored("❌ You don’t have an Energy Cell.\n", "error"); self.root.bell(); return
+            if self._normalize_text(typed_raw) in {"healing serum", "serum"}:
+                if "Healing Serum" in p.inventory:
+                    p.inventory.remove("Healing Serum"); heal_amount = 10
+                    if p.pclass == "Dark Matter Cell": heal_amount += 5; self.append_colored("🔬 Dark Matter Cell: enhanced Healing Serum!\n", "success")
+                    if p.plumbus_pro_active: heal_amount += 5; self.append_colored("🔧 Plumbus Pro perk: it hits harder.\n", "success")
+                    old_hp = p.hp; p.hp = min(p.max_hp, p.hp + heal_amount); gained = p.hp - old_hp
+                    self.append_colored(f"💉 You inject a healing serum and regain {gained} HP! (Now at {p.hp}/{p.max_hp})\n", "success"); self.update_info_display(); return
+                else: self.append_colored("You don't have a healing serum.\n", "error"); self.root.bell(); return
+            
+            # Meeseeks Box: instant kill on anything that isn't a boss. Existence is pain, etc.
+            if self._normalize_text(typed_raw) == "meeseeks box":
+                if "Meeseeks Box" not in p.inventory:
+                    self.append_colored("You don't have a Meeseeks Box.\n", "error")
+                    return
+                monster = room.get("monster")
+                if not monster:
+                    self.append_colored(
+                        "'I'm Mr. Meeseeks, look at me! What's the task?!' ...There's nothing to fight here.\n",
+                        "lore"
+                    )
+                    return
+                # Block it on boss monsters. No cheesing the big guys.
+                if getattr(monster, "is_boss", False):
+                    self.append_colored(
+                        "'Ooh, that's a tough one! I don't think I can do that!' "
+                        "The Meeseeks poofs out of existence in a cloud of logic failure.\n",
+                        "error"
+                    )
+                    p.inventory.remove("Meeseeks Box")
+                    return
+                self.append_colored(
+                    "'I'M MR. MEESEEKS, LOOK AT ME!' A blue creature appears. "
+                    "'YOUR TASK IS TO DESTROY THAT GUY!'\n",
+                    "achievement"
+                )
+                self.append_colored(
+                    f"'CAAAAAN DO!' The Meeseeks obliterates the {monster.name} and vanishes with a cheerful 'ALL DONE!'\n",
+                    "success"
+                )
+                p.inventory.remove("Meeseeks Box")
+                room["monster"] = None
+                room["last_defeated_monster"] = monster.name
+                p.monsters_defeated += 1
+                self.update_info_display()
+                self.print_room()
+                return
+            if inv_match:
+                self.use_item(inv_match, room)
+                return
+            else:
+                self.append_colored("🎒 " + self._quip("dont_have", typed_raw) + "\n", "error")
+                self.root.bell()
+                return
+        elif command == "craft":
+            if len(parts) < 2: self.append_colored("❌ Craft what? Available recipes: " + ", ".join(CRAFTING_RECIPES.keys()) + "\n", "error"); self.root.bell(); return
+            recipe_name = " ".join(parts[1:]).title(); success, result, consumed_materials = craft_item(recipe_name, p.crafting_materials, p.pclass)
+            if success:
+                if not consumed_materials and p.pclass == "Fabricator Drone": self.append_colored("⚙️ Fabricator Drone kicks in. Materials not consumed!\n", "success")
+                self.root.bell()
+                p.inventory.append(recipe_name); p.items_crafted += 1; p.total_items_collected += 1; self.append_colored(f"🔨 Successfully crafted: {recipe_name}!\n", "success")
+                self.append_colored(f"   Effect: {result['effect']}\n", "achievement"); self._recalc_passives(); self.update_info_display(); check_achievements(p, self.world, self)
+            else: self.append_colored("🔧 " + self._quip("cant_craft", recipe_name) + f" ({result})\n", "error"); self.root.bell(); return
+            return
+        elif command in ["help", "h", "?"]: self.show_enhanced_help(); return
+        elif command in ["look", "examine", "l"]:
+            if (len(parts) == 1 and room.get("special_interactions") and any(inter.startswith("look") for inter in room["special_interactions"])): self.handle_special_interaction("look", room); return
+            if len(parts) > 1: self.examine_target(" ".join(parts[1:]), room)
+            else: self.print_room(); return
+            return
+        elif command in ["eat", "observe", "play", "tinker", "negotiate", "listen",
+                         "scavenge", "haggle", "examine", "investigate", "call",
+                         "harvest", "order", "bribe", "connect"]:
+            self.handle_special_interaction(command, room)
+            return
+        elif command in ["stats", "status"]:
+            self.show_detailed_stats()
+            return
+        elif command == "map": self.toggle_map(); return
+        elif command == "journal": self.toggle_journal(); return
+        elif command == "achievements": self.toggle_achievements(); return
+        elif command == "save": self.save_game(); return
+        elif command == "load": self.load_game(); return
+        elif command == "sense":
+            if p.race == "Recon Visor":
+                mana_cost = 2
+                range_limit = 999
+            else:
+                self.append_colored("You need the Recon Visor equipped to sense a room.\n", "error")
+                self.root.bell()
+                return
+            
+            if len(parts) < 3: self.append_colored("Usage: sense <col> <row> (e.g. sense C 4)", "error"); self.root.bell(); return
+            try: tx, ty = parse_coord(parts[1]), parse_coord(parts[2])
+            except (ValueError, IndexError): self.append_colored("Invalid coordinates.", "error"); self.root.bell(); return
+            
+            if abs(tx - x) > range_limit or abs(ty - y) > range_limit: self.append_colored("Scan target is outside operational range.", "error"); self.root.bell(); return
+            if (tx, ty) not in self.world: self.append_colored("There's no room at those coordinates.", "error"); self.root.bell(); return
+            if p.charge < mana_cost: self.append_colored(f"❌ Not enough charge to use scan. Needs {mana_cost} Charge.", "error"); self.root.bell(); return
+            p.charge -= mana_cost; self.append_colored(f"🔭 Scan results for {to_letter_number(tx,ty)}:\n", "lore")
+            self.append_colored(self.world[(tx, ty)].get("desc", "Mysterious space") + "\n", "lore")
+            self.update_info_display(); return
+        elif command == "hint": self.show_hint(); return
+        elif command == "quest":
+            self.show_hint(); return
+        elif command in ("search", "discover_lore") or (command == "discover" and len(parts) > 1 and parts[1] == "lore"):
+            self.discover_lore()
+            return
+        elif command == "portal_jump": self._handle_portal_jump(parts); return
+        elif command in ["inventory", "inv", "i"]:
+            self.show_inventory()
+            return
+        
+        self.append_colored("❌ " + self._quip("unknown", cmd) + "\n", "error"); self.root.bell()
+        
+    def _strip_found_sentence(self, room, item_name):
+        aa = a_or_an(item_name)
+        patterns = [
+            f" You notice {aa} {item_name} here.",
+            f" You notice a {item_name} here.",
+            f" You notice an {item_name} here.",
+            # The 'glinting' spelling variants, in case some text uses 'em. Covering my bases.
+            f" You notice {aa} {item_name} glinting here.",
+            " Something glints here…", " Something unusual lies here…",
+        ]
+        for p in patterns:
+            if p in room["desc"]:
+                room["desc"] = room["desc"].replace(p, ""); break
+        # I remember what got cleared out of here so the room can show a faded little note later.
+        room.setdefault("looted", [])
+        if item_name not in room["looted"]:
+            room["looted"].append(item_name)
+    def get_specific_item(self, item_name):
+        x, y = self.player.x, self.player.y; room = self.world[(x, y)]
+        if item_name not in room["items"]: self.append_colored(f"❌ {item_name} is not here to pick up.\n", "error"); return
+        if item_name == "Federation Credits":
+            credits_amount = random.randint(5, 15)
+            if any(a.name == "Schmeckle Millionaire" and a.unlocked for a in ACHIEVEMENTS):
+                credits_amount += (credits_amount // 10) * 2
+            self.player.federation_credits += credits_amount
+            room["items"].remove("Federation Credits"); self._strip_found_sentence(room, "Federation Credits"); self.player.total_items_collected += 1
+            self._recalc_passives(); self.update_enhanced_map(); self.print_room()
+            self.append_colored(f"💰 You collect {credits_amount} Federation Credits. Total: {self.player.federation_credits}\n", "success")
+            self.grant_xp(1, "collected Federation Credits")
+            check_achievements(self.player, self.world, self)
+            return
+        is_material = any(item_name in r["materials"] for r in CRAFTING_RECIPES.values())
+        if is_material: self.player.crafting_materials.append(item_name)
+        else: self.player.inventory.append(item_name)
+        room["items"].remove(item_name); self._strip_found_sentence(room, item_name); self.player.total_items_collected += 1
+        is_main_quest_item = item_name in [q["item"] for q in EXTENDED_QUESTS]
+        if is_main_quest_item: msg, tag, bonus_xp = f"✨ You pocket {self._np(item_name)}.", "lore", 3
+        elif item_name == "Plumbus": self.player.plumbuses_collected += 1; msg, tag, bonus_xp = f"✨ You pocket {self._np(item_name)}. Everyone has one!", "achievement", 1
+        elif item_name == "Mega Seed": msg, tag, bonus_xp = f"🧠 You carefully pick up {self._np(item_name)}. Extreme intelligence awaits!", "achievement", 1
+        elif is_material: msg, tag, bonus_xp = f"💎 You collect {self._np(item_name)} for crafting!", "success", 1
+        else: msg, tag, bonus_xp = f"🎒 You pick up {self._pickup_phrase(item_name)}.", "success", 1
+        self._recalc_passives(); self.update_enhanced_map()
+        # Re-render the room FIRST, now that the item's gone, so the confirmation I print
+        # next doesn't get wiped out by print_room nuking the screen. Order matters, Morty.
+        self.print_room()
+        self.append_colored(msg + "\n", tag)
+        self.grant_xp(bonus_xp, f"collected {item_name}")
+        check_achievements(self.player, self.world, self)
+    def get_first_available_item(self):
+        room = self.world[(self.player.x, self.player.y)]
+        if not room["items"]: self.append_colored("🤲 " + self._quip("nothing_to_take") + "\n", "error"); return
+        item = room["items"][0]; self.get_specific_item(item)
+    def _cur_step(self):
+        si = self.player.step_idx
+        return MAIN_STEPS[si] if 0 <= si < len(MAIN_STEPS) else None
+
+    def _advance_step(self):
+        self.player.step_idx += 1
+        # quest_idx tracks completed CHAPTERS (4 steps each) for the map, journal, achievements,
+        # and info display, all of which I wrote against it. Don't go redefining it on me.
+        self.player.quest_idx = self.player.step_idx // STEPS_PER_CHAPTER
+
+    def handle_rick_dialog(self, npc):
+        p = self.player; step = self._cur_step()
+        if step is None:
+            self.append_colored(f'Rick C-137: "OMNI-CORE\'s humming, {self.player.name}. Infinite, guilt-free power. Go enjoy the apocalypse you helped cause."\n', "lore"); return
+        ch = EXTENDED_QUESTS[step["ci"]]; kind = step["kind"]
+        if kind == "talk_rick":
+            if step["ci"] == 0 and not p.objective_shown:
+                self.append_colored("🌀 THE MISSION:\n" + GAME_OBJECTIVE + "\n\n", "quest")
+                p.objective_shown = True
+            gift = ch["rick_gift"]
+            if not self._find_item_in_list(gift, p.inventory): p.inventory.append(gift)
+            self.append_colored(self._q(ch["rick_send"]) + "\n", "quest")
+            self.append_colored(f"📦 Rick hands you: {gift}. Take it to {ch['character']}.\n", "success")
+            self._advance_step(); self.grant_xp(5, "briefed by Rick"); self.update_info_display(); check_achievements(p, self.world, self)
+        elif kind == "deliver_char":
+            self.append_colored(f'Rick: "Still here? Go give that {ch["rick_gift"]} to {ch["character"]}. Chop chop."\n', "lore")
+        elif kind == "retrieve":
+            self.append_colored(f'Rick: "{ch["riddle_extra"]} Then bring me the {ch["item"]}."\n', "lore")
+        elif kind == "deliver_rick":
+            if self._find_item_in_list(ch["item"], p.inventory):
+                self.append_colored(f'Rick: "Is that my {ch["item"]}? Hand it over."\n', "quest")
+            else:
+                self.append_colored(f'Rick: "Where\'s my {ch["item"]}? {ch["riddle_extra"]}"\n', "lore")
+
+    def handle_chapter_char_dialog(self, npc):
+        p = self.player; step = self._cur_step(); ci = npc.quest_idx; ch = EXTENDED_QUESTS[ci]
+        if step is None or ci < step["ci"]:
+            self.append_colored(f'{npc.name}: "We\'re square. Tell Rick he still owes me."\n', "lore"); return
+        if ci > step["ci"]:
+            self.append_colored(f'{npc.name} eyes you. "Rick hasn\'t sent you my way yet, kid. Come back when he does."\n', "lore"); return
+        kind = step["kind"]
+        if kind == "talk_rick":
+            self.append_colored(f'{npc.name}: "Go see Rick first. I don\'t deal with empty-handed errand boys."\n', "lore")
+        elif kind == "deliver_char":
+            if self._find_item_in_list(ch["rick_gift"], p.inventory):
+                self.append_colored(f'{npc.name}: "You holding something from Rick? Hand it over."\n', "quest")
+            else:
+                self.append_colored(f'{npc.name}: "Rick was supposed to send a {ch["rick_gift"]}. No gift, no help."\n', "lore")
+        elif kind == "retrieve":
+            self.append_colored(self._q(ch["char_need"]) + "\n", "quest")
+        elif kind == "deliver_rick":
+            self.append_colored(f'{npc.name}: "You got the {ch["item"]}? That\'s Rick\'s headache now. Go see him."\n', "lore")
+
+    def _install_core_part(self, ch):
+        p = self.player
+        self.append_colored(self._q(ch["rick_install"]) + "\n", "achievement")
+        p.motif_puzzles_solved += 1; self.grant_xp(50, "OMNI-CORE part installed")
+        self._advance_step(); check_achievements(p, self.world, self)
+        if self._cur_step() is None:
+            self.handle_game_completion()
+        else:
+            self.append_colored(f'Rick: "One part down. Talk to me when you\'re ready for the next, {self.player.name}."\n', "lore")
+        self.update_info_display()
+
+    def handle_subquest_dialog(self, npc, room):
+        p = self.player; subq = npc.subqdata
+        p.subquest_met.add(npc.name.lower())
+        if npc.name.lower() in p.subquest_ack:
+            self.append_colored(f'😊 {npc.name}: "Thanks again, {p.name}!"\n', "success"); return
+        need = subq["need_item"]
+        if self._find_item_in_list(need, p.inventory):
+            self.append_colored(f'{npc.name}: {subq["give_line"]}\n', "quest")
+        else:
+            self.append_colored(f"❓ {npc.name}: {subq['lost_line']}\n", "lore")
+            self.append_colored(f"   (Hint: {subq['key_hint']})\n", "quest")
+        p.subquest_heard.add(npc.name.lower())
+        if p.pclass == "Universal Translator" and random.random() < 0.30:
+            if random.choice([True, False]): heal_amount = random.randint(3, 7); p.hp = min(p.max_hp, p.hp + heal_amount); self.append_colored(f"🤝 Your diplomatic charm earns you {heal_amount} HP from {npc.name}!\n", "success")
+            else: charge_gain = random.randint(2, 5); p.charge = min(p.max_charge, p.charge + charge_gain); self.append_colored(f"🤝 Your smooth talk restores {charge_gain} Charge from {npc.name}!\n", "success")
+            self.update_info_display()
+    def handle_game_completion(self):
+        self.append_colored("\n" + "="*60 + "\n", "achievement")
+        self.append_centered("THE OMNI-CORE IS COMPLETE\n", "banner")
+        self.append_colored("="*60 + "\n", "achievement")
+        self.append_colored(
+            "Rick snaps the Singularity Heart into place. The OMNI-CORE thrums - five stolen "
+            "wonders humming as one. No tiny civilization to unionize, no Zeep to one-up him. "
+            "Strike-proof, guilt-free, infinite power.\n", "lore")
+        self.append_colored(
+            f"'We did it, {self.player.name},' Rick burps. 'Real talk - you fetched, you fought, you didn't die. "
+            "Color me moderately impressed.'\n", "quest")
+        self.append_colored(
+            "He carries the OMNI-CORE past the dead Microverse Battery... and plugs it straight into "
+            "his interdimensional cable box.\n\n", "lore")
+        self.append_colored(
+            "'...Rick, that's a UNIVERSE of infinite power. For your CABLE?'\n", "lore")
+        self.append_colored(
+            f"'I'm never paying that bill again, {self.player.name}. Priorities. Now get schwifty - there's a "
+            "season finale on in nine thousand dimensions at once.'\n\n", "lore")
+        self.append_colored(
+            "Across the multiverse, President Morty notes the new power signature, smiles, and files "
+            "it away for later. Roll credits.\n", "success")
+        self.append_colored("\n📊 FINAL STATISTICS:\n", "quest")
+        self.append_colored(f"   Moves taken: {self.player.moves_taken}\n")
+        self.append_colored(f"   Enemies defeated: {self.player.monsters_defeated}\n")
+        self.append_colored(f"   Items crafted: {self.player.items_crafted}\n")
+        self.append_colored(f"   Lore fragments: {len(self.player.lore_fragments)}\n")
+        self.append_colored(f"   Deaths: {self.player.deaths}\n")
+        self.append_colored(f"   Difficulty: {self.player.difficulty.value.title()}\n")
+        check_achievements(self.player, self.world, self)
+        self.append_centered("\n--- THANKS FOR PLAYING! ---\n", "banner")
+        self.entry.config(state="disabled")
+    def use_item(self, item_name, room):
+        p = self.player
+        if item_name not in p.inventory: self.append_colored(f"❌ You don't have {self._np(item_name)} in your inventory.\n", "error"); self.root.bell(); return
+        if item_name == "Mega Seed":
+            p.inventory.remove(item_name); p.mega_seeds_used += 1; mana_boost = 5; hp_loss = 10
+            p.max_charge = min(p.max_charge + mana_boost, 999); p.charge = min(p.charge + mana_boost, p.max_charge); p.hp = max(1, p.hp - hp_loss)
+            self.append_colored(f"🧠 You directly consume the Mega Seed! Your Max Charge permanently increases by {mana_boost}, but you lose {hp_loss} HP.\n", "success")
+            check_achievements(p, self.world, self); self.update_info_display(); return
+        if item_name in CRAFTING_RECIPES:
+            recipe = CRAFTING_RECIPES[item_name]; self.append_colored(f"🔮 You activate {self._np(item_name)}!\n", "success"); self.append_colored(f"✨ {recipe['effect']}\n", "achievement")
+            if item_name == "Mega Seed Injector":
+                if "Mega Seed" in p.inventory:
+                    p.inventory.remove("Mega Seed"); p.mega_seeds_used += 1; mana_boost = 10; hp_loss = 5
+                    p.max_charge = min(p.max_charge + mana_boost, 999); p.charge = min(p.charge + mana_boost, p.max_charge); p.hp = max(1, p.hp - hp_loss)
+                    self.append_colored(f"🧠 The injector delivers the Mega Seed's power! Max Charge +{mana_boost}, lose {hp_loss} HP.\n", "success")
+                    p.inventory.remove(item_name); check_achievements(p, self.world, self)
+                else: self.append_colored("❌ You need a 'Mega Seed' to use the 'Mega Seed Injector'.\n", "error"); self.root.bell(); return
+            elif item_name == "Schmeckle Converter":
+                if p.federation_credits >= 5:
+                    p.federation_credits -= 5; available_materials = [mat for recipe_data in CRAFTING_RECIPES.values() for mat in recipe_data["materials"]]
+                    new_material = random.choice(available_materials); p.crafting_materials.append(new_material); p.total_items_collected += 1
+                    self.append_colored(f"♻️ Converter produces {self._np(new_material)}! Lost 5 Credits.\n", "success"); p.inventory.remove(item_name)
+                else: self.append_colored("❌ Need 5 Federation Credits to use the Schmeckle Converter.\n", "error"); self.root.bell(); return
+            elif item_name == "Interdimensional Goggles":
+                for pos, rm in self.world.items():
+                    if rm.get("npc") or rm.get("monster") or rm.get("items") or rm.get("motif") is not None: rm["visited"] = True; p.visited.add(pos); p.teleport_locations.add(pos)
+                self.append_colored("🌌 Goggles reveal all key locations on your map!\n", "success"); self.update_enhanced_map(); self.update_minimap(); p.inventory.remove(item_name)
+            elif item_name == "Plumbus Repair Kit": p.hp = p.max_hp; p.charge = p.max_charge; self.append_colored("✨ Repair Kit restores your HP and Charge to full!\n", "success"); p.inventory.remove(item_name)
+            elif item_name == "Mindblower Device":
+                current_monster = room.get("monster")
+                if current_monster: 
+                    # Slap a strong multi-turn stun on it.
+                    current_monster.stun_turns = 2
+                    self.append_colored(
+                        f"🧠 Mindblower scrambles the {current_monster.name}'s brain! It's out of it for a while.\n",
+                        "success"
+                    )
+                    p.inventory.remove(item_name)
+                    self.update_info_display()
+                else:
+                    self.append_colored("❌ No monster here.\n", "error")
+                    self.root.bell()
+                return
+            elif item_name == "Portal Gun (Replica)": self.append_colored("🌐 To use, type 'portal_jump <X> <Y>'.\n", "lore");
+            self._recalc_passives(); self.update_info_display(); return
+        self.append_colored("❌ Nothing happens. Try the right place, time, and quest...\n", "error"); self.root.bell()
+    def handle_special_interaction(self, command, room):
+        p = self.player
+        full_cmd = command.lower().strip()
+        verb = full_cmd.split()[0]
+        
+        interaction_verbs = [v.split('_')[0].lower() for v in room.get("special_interactions", [])]
+        if verb not in interaction_verbs:
+            self.append_colored(f"❌ You can't {verb} anything special here.\n", "error")
+            self.root.bell()
+            return
+        
+        # Guard against a missing motif. Belt and suspenders.
+        if room.get("motif") is None:
+            if "hidden_lore" in room and not room.get("lore_discovered"):
+                self.discover_lore()
+            else:
+                self.append_colored("You do that. Nothing interesting happens.\n", "lore")
+            return
+        
+        # Okay, now it's safe:
+        motif_data = EXTENDED_MOTIFS[room["motif"]]
+        step = self._cur_step()
+        motif_verb = _motif_verb(room["motif"])
+
+        # ===== Main-story retrieval: only the current chapter's room, only on its retrieve step. =====
+        if room.get("quest_idx") is not None:
+            ci = room["quest_idx"]; ch = EXTENDED_QUESTS[ci]
+            if not room.get("quest_item_revealed"):
+                if step and step["kind"] == "retrieve" and step["ci"] == ci and verb == motif_verb:
+                    item_name = ch["item"]; room["quest_item_revealed"] = True
+                    p.inventory.append(item_name); p.total_items_collected += 1
+                    self.append_colored(ch["retrieve_story"] + "\n", "achievement")
+                    self.append_colored(f"🎁 You obtained: {item_name}. Take it to Rick.\n", "success")
+                    self.grant_xp(15, "special action: story item"); self._advance_step()
+                    self.update_info_display(); check_achievements(p, self.world, self)
+                    if "hidden_lore" in room and not room.get("lore_discovered"): self.discover_lore()
+                    return
+                # Not the right time for this room. Come back later.
+                self.append_colored("You poke around, but nothing happens here yet. Follow the story's lead (try 'hint').\n", "lore"); return
+            # Already solved it, so fall through to whatever repeatable action's below.
+
+        # ===== Side-quest retrieval: use the found KEY item here to spit out the NEED item. =====
+        if room.get("side_idx") is not None and not room.get("subquest_done"):
+            si = room["side_idx"]; subq = EXTENDED_SUBQUESTS[si]
+            if verb == motif_verb:
+                key = subq["key_item"]; need = subq["need_item"]
+                key_match = self._find_item_in_list(key, p.inventory) or self._find_item_in_list(key, p.crafting_materials)
+                if key_match:
+                    if key_match in p.inventory: p.inventory.remove(key_match)
+                    elif key_match in p.crafting_materials: p.crafting_materials.remove(key_match)
+                    p.inventory.append(need); room["subquest_done"] = True
+                    self.append_colored(subq["retrieve_line"] + "\n", "achievement")
+                    self.append_colored(f"🎁 You obtained: {need}. Return it to {subq['npc']}.\n", "success")
+                    self.grant_xp(12, "special action: side item")
+                    self.update_info_display(); check_achievements(p, self.world, self)
+                    if "hidden_lore" in room and not room.get("lore_discovered"): self.discover_lore()
+                    return
+                else:
+                    self.append_colored(f"You {verb}, but nothing comes of it. You need the {subq['key_item']} first. ({subq['key_hint']})\n", "lore"); return
+        motif_data = EXTENDED_MOTIFS[room["motif"]]
+        if "repeatable_action" in motif_data:
+            action = motif_data["repeatable_action"]
+            cost_type = action["cost_type"]
+            cost_amount = action["cost_amount"]
+            
+            # Check whether you can pay the cost.
+            if cost_type == "credits" and p.federation_credits < cost_amount:
+                self.append_colored(f"You need {cost_amount} Credits to do that here. You only have {p.federation_credits}.\n", "error"); self.root.bell(); return
+            elif cost_type == "material" and not p.crafting_materials:
+                self.append_colored("You need at least one spare crafting material to tinker with.\n", "error"); self.root.bell(); return
+                
+            # Pay the cost.
+            self.append_colored(action["flavor"] + "\n", "lore")
+            if cost_type == "credits": p.federation_credits -= cost_amount
+            elif cost_type == "material": p.crafting_materials.pop(random.randrange(len(p.crafting_materials)))
+            
+            self.update_info_display()
+            
+            # ===== Figuring out what actually happens. =====
+            # Blips and Chitz: random buff, debuff, or reward. Roll the dice.
+            if motif_data["motif"] == "blips_and_chitz":
+                outcomes = ["buff_hp", "buff_charge", "find_credits", "get_scammed", "flavor_roy"]
+                result = random.choice(outcomes)
+                if result == "buff_hp":
+                    p.hp = min(p.max_hp, p.hp + 5)
+                    self.append_colored("You won! The machine dispenses a nutritious paste. (+5 HP)\n", "success")
+                elif result == "buff_charge":
+                    p.charge = min(p.max_charge, p.charge + 5)
+                    self.append_colored("You hit the jackpot! The machine sparks and recharges some of your gear. (+5 Charge)\n", "success")
+                elif result == "find_credits":
+                    found = random.randint(1, 10)
+                    p.federation_credits += found
+                    self.append_colored(f"You find {found} Credits left in the coin return!\n", "success")
+                elif result == "get_scammed":
+                    self.append_colored("The game was rigged from the start. You get nothing.\n", "error")
+                else:
+                    self.append_colored("You play a game of 'Roy: A Life Well Lived'. You go back to the carpet store. What a life.\n", "lore")
+                self.update_info_display()
+            # Rick's Garage: tinker and walk out with a new item.
+            elif motif_data["motif"] == "rick's_garage":
+                outcomes = ["new_material", "consumable", "failure"]
+                result = random.choice(outcomes)
+                if result == "new_material":
+                    new_mat = random.choice(["Rickium Alloy", "Cognitive Fabric", "Neural Processor"])
+                    p.crafting_materials.append(new_mat)
+                    self.append_colored(f"You successfully cobbled together a working {new_mat}!\n", "success")
+                elif result == "consumable":
+                    item = random.choice(["Healing Serum", "Energy Cell"])
+                    p.inventory.append(item)
+                    self.append_colored(f"Your tinkering accidentally creates a {item}!\n", "success")
+                else:
+                    self.append_colored("The parts explode in a shower of sparks, leaving behind useless slag.\n", "error")
+            # Alien Market: gamble for something rare.
+            elif motif_data["motif"] == "alien_market":
+                if random.random() < 0.2: # 20% shot at an actually good item.
+                    rare_item = random.choice(["Plumbus", "Mega Seed", "Fleeb"])
+                    p.inventory.append(rare_item)
+                    self.append_colored(f"The box contains... a {rare_item}! What a steal!\n", "achievement")
+                else: # 80% of the time it's junk. That's gambling, Morty.
+                    self.append_colored("You open the box to find a perfectly ordinary rock. You've been scammed.\n", "error")
+            return
+        # ===== Fallback: generic motif response, or maybe you stumble onto some lore. =====
+        # If no quest fired and no repeatable action happened, maybe you dig up some lore.
+        if "hidden_lore" in room and not room.get("lore_discovered"):
+            self.discover_lore()
+        else:
+            interaction_key = next((i for i in room["special_interactions"] if i.startswith(verb)), verb)
+            responses = {"eat_cob": "You take another bite of a cob. Still corny.", "observe_ricks": "You watch the Ricks. They haven't changed.", "listen_trees": "The trees continue their endless chatter."}
+            self.append_colored(responses.get(interaction_key, "You do that again. Nothing new happens.\n"), "lore")
+    
+    # ===== The rest of the UI and logic methods. Odds and ends. =====
+    def show_inventory(self):
+        p = self.player; quest_items_set = {q["item"] for q in EXTENDED_QUESTS} | {q["rick_gift"] for q in EXTENDED_QUESTS}; subquest_items_set = {s["key_item"] for s in EXTENDED_SUBQUESTS} | {s["need_item"] for s in EXTENDED_SUBQUESTS}; crafting_materials_set = set(mat for rec in CRAFTING_RECIPES.values() for mat in rec["materials"])
+        def count_list(items): counts = {}; [counts.update({it: counts.get(it, 0) + 1}) for it in items]; return counts
+        inv_normal = [itm for itm in p.inventory if itm not in crafting_materials_set and itm not in quest_items_set and itm not in subquest_items_set]
+        counts_normal = count_list(inv_normal); counts_quest = count_list([it for it in p.inventory if it in quest_items_set])
+        counts_sub = count_list([it for it in p.inventory if it in subquest_items_set]); combined_mats = count_list(p.crafting_materials + [it for it in p.inventory if it in crafting_materials_set])
+        self.append_colored("\n🎒 INVENTORY:\n", "achievement")
+        if counts_normal: [self.append_colored(f"   • {it}" + (f" x{cnt}" if cnt > 1 else "") + "\n") for it, cnt in sorted(counts_normal.items())]
+        else: self.append_colored("   None\n")
+        self.append_colored("\n📜 MAIN-QUEST ITEMS:\n", "quest")
+        if counts_quest: [self.append_colored(f"   • {it}" + (f" x{cnt}" if cnt > 1 else "") + "\n") for it, cnt in sorted(counts_quest.items())]
+        else: self.append_colored("   None\n")
+        self.append_colored("\n🧩 SIDE-QUEST ITEMS:\n", "achievement")
+        if counts_sub: [self.append_colored(f"   • {it}" + (f" x{cnt}" if cnt > 1 else "") + "\n") for it, cnt in sorted(counts_sub.items())]
+        else: self.append_colored("   None\n")
+        self.append_colored("\n🔧 CRAFTING MATERIALS:\n", "achievement")
+        if combined_mats: [self.append_colored(f"   • {it} x{cnt}\n") for it, cnt in sorted(combined_mats.items())]
+        else: self.append_colored("   None\n")
+        self.append_colored("\n💰 CURRENCY:\n", "success"); self.append_colored(f"   • Federation Credits: {p.federation_credits}\n")
+    def show_detailed_stats(self):
+        self.append_colored("\n📊 DETAILED STATISTICS:\n", "quest"); self.append_colored("Character: Morty\n"); self.append_colored(f"Main Gadget: {self.player.race}\n"); self.append_colored(f"Attachment: {self.player.pclass}\n"); self.append_colored(f"Universe: {self.current_save_name or "(none)"}\n")
+        self.append_colored(f"Difficulty: {self.player.difficulty.value.title()}\n"); self.append_colored(f"HP: {self.player.hp}/{self.player.max_hp}\n")
+        self.append_colored(f"Charge: {self.player.charge}/{self.player.max_charge}\n"); self.append_colored(f"Armor: {self.player.armor}\n"); self.append_colored(f"Damage Bonus: +{self.player.damage_bonus}\n\n")
+        self.append_colored(f"Quest Progress: {self.player.quest_idx}/{len(EXTENDED_QUESTS)}\n"); self.append_colored(f"Moves Taken: {self.player.moves_taken}\n")
+        self.append_colored(f"Enemies Defeated: {self.player.monsters_defeated}\n"); self.append_colored(f"Items Crafted: {self.player.items_crafted}\n"); self.append_colored(f"Lore Fragments: {len(self.player.lore_fragments)}\n")
+        self.append_colored(f"Total Items Collected: {self.player.total_items_collected}\n"); self.append_colored(f"Deaths: {self.player.deaths}\n\n")
+        self.append_colored("🌟 SPECIAL ABILITIES:\n", "achievement")
+        for ability in self.player.special_abilities: self.append_colored(f"   • {ability}\n")
+        self.append_colored("\n📊 RICK & MORTY TRACKING:\n", "lore"); self.append_colored(f"   Federation Credits: {self.player.federation_credits}\n")
+        self.append_colored(f"   Cromulons Defeated: {self.player.cromulon_defeated_count}\n"); self.append_colored(f"   Plumbuses Collected: {self.player.plumbuses_collected}\n")
+        self.append_colored(f"   Mega Seeds Used: {self.player.mega_seeds_used}\n"); self.append_colored(f"   XP Bonus: {self.player.xp_bonus_percent}%\n")
+    def show_enhanced_help(self):
+        self.append_colored("\nRICK AND MORTY: MULTIVERSE MAYHEM COMMANDS\n", "quest"); self.append_colored("="*60 + "\n", "quest")
+        self.append_colored("THE GOAL:\n", "achievement"); self.append_colored("  Rick's Microverse Battery died, so run his errands across the\n  multiverse to build the OMNI-CORE. Talk to Rick to begin.\n")
+        self.append_colored("\nTYPING TIP, TAB AUTOCOMPLETE:\n", "success")
+        self.append_colored("  Press Tab to cycle through only the actions you can take right now.\n")
+        self.append_colored("  Type a letter first to narrow it (e.g. 'g'+Tab). After a command\n  that needs a target (get / use / give / craft / buy / sell), Tab\n  cycles the valid choices (e.g. 'get'+space+Tab lists what's here).\n")
+        self.append_colored("\nMOVE:\n", "achievement"); self.append_colored("  north / south / east / west  (or n / s / e / w)\n"); self.append_colored("  portal_jump <X> <Y>: jump to any visited coord (needs a Portal Gun (Replica))\n")
+        self.append_colored("\nTALK & INTERACT:\n", "achievement"); self.append_colored("  talk: speak to whoever is here\n"); self.append_colored("  give <item>: hand an item to the NPC here\n"); self.append_colored("  get <item>: pick something up\n"); self.append_colored("  use <item>: use a gadget/consumable (e.g. Healing Serum, Energy Cell)\n"); self.append_colored("  look / examine / l: re-describe the room or a target\n"); self.append_colored("  hint / quest: your current objective and where to go next\n"); self.append_colored("  search: dig up useful intel/clues hidden in a special room\n")
+        self.append_colored("\nSPECIAL-ROOM ACTIONS (used to retrieve quest items):\n", "achievement"); self.append_colored("  eat, observe, play, tinker, negotiate, listen, scavenge, haggle,\n  investigate, call, harvest, order, bribe, connect\n"); self.append_colored("  (Tab will suggest the right one when you're standing in such a room.)\n")
+        self.append_colored("\nSHOP (only at Glexo's Pawn Shop, marked $ on the map):\n", "success"); self.append_colored("  list: see what's for sale\n  buy <item> / sell <item>\n")
+        self.append_colored("\nCOMBAT (typed directly, no 'cast'):\n", "combat")
+        self.append_colored("  attack: basic attack\n  flee: try to escape\n")
+        self.append_colored("  plasma_blast: heavy hit (costs Charge)\n")
+        self.append_colored("  mind_wipe: hit + stun the enemy a turn (costs Charge)\n")
+        self.append_colored("  echo_scream: double hit (costs HP)\n")
+        if self.player and self.player.race == "Neutrino Bomb": self.append_colored("  show_me_what_you_got: detonate the Neutrino Bomb (costs Charge)\n", "achievement")
+        self.append_colored("  A failed or mistyped command never costs you a turn. Only real\n  actions do, so you won't get hit for typing something wrong.\n")
+        if self.player and self.player.race == "Recon Visor":
+            self.append_colored("\nRECON VISOR:\n", "achievement"); self.append_colored("  scan: analyze the current room\n  sense <X> <Y>: peek at coordinates (costs 2 Charge)\n")
+        self.append_colored("\nINVENTORY / CRAFTING:\n", "achievement"); self.append_colored("  inventory / inv / i: what you carry\n  stats: your full character sheet\n  craft <item>: build a gadget (needs a side-quest reward piece + parts)\n")
+        self.append_colored("\nGAME:\n", "lore"); self.append_colored("  map / journal / achievements: open those panels\n  save / load: save or load your game\n")
+        self.append_colored("\nCLASS RADAR:\n", "success")
+        self.append_colored("  Your attachment faintly senses one kind of room a few tiles away, shown as a\n  DIMMED marker on the map before you've been there: Holo-Mapper=Items,\n  Parasite Scanner=Enemies, Dark Matter Cell=Quests/Shop, Universal Translator=Main NPCs,\n  Fabricator Drone=Side NPCs. Targeting Chip/Combat Exo-Rig/Portal Coil have no radar but\n  hit harder / level faster / move freer instead. (See 'Radar:' in your stats.)\n")
+        self.append_colored("\nRESOURCES:\n", "lore"); self.append_colored("  Charge = gadget energy (restore with Energy Cell). HP heals with Healing Serum.\n")
+    def examine_target(self, target, room):
+        target_lower = target.lower()
+        if target_lower in ["room", "area", "surroundings"]: self.print_room()
+        elif target_lower in ["npc", "person"] and room.get("npc"):
+            npc = room["npc"]
+            if getattr(npc, "is_shop", False): self.append_colored(f"🔍 {npc.name}: a four-eyed pawnbroker. Type 'list' to see his wares.\n", "lore")
+            elif npc.is_subquest: self.append_colored(f"🔍 {npc.name} needs {self._np(npc.subqdata['need_item'], True)}.\n", "lore")
+            elif getattr(npc, "is_rick", False): self.append_colored("🔍 Rick C-137: your grandfather, a genius, and the reason you're doing all this.\n", "quest")
+            else: self.append_colored(f"🔍 {npc.name}: {EXTENDED_QUESTS[npc.quest_idx]['persona']}\n", "quest")
+        elif target_lower in ["enemy", "creature", "monster"] and room.get("monster"):
+            monster = room["monster"]
+            self.append_colored(f"🔍 {monster.name} (HP: {monster.hp}/{monster.max_hp})\n", "combat")
+            self.append_colored(f"    {monster.description}\n")
+            if monster.loot:
+                self.append_colored(f"    Might drop: {', '.join(monster.loot)}\n", "success")
+        elif target_lower in ["lore"] and "hidden_lore" in room and not room.get("lore_discovered"): self.append_colored("📋 Something here catches your eye. There's more to this place than it lets on.\n", "lore")
+        else:
+            item_match = self._find_item_in_list(target, room.get("items", []))
+            if item_match: self.append_colored(f"🔍 {item_match}: An intriguing object that might be useful.\n", "success")
+            else: self.append_colored(f"❌ You don't see anything notable about '{target}' here.\n", "error")
+    def toggle_map(self):
+        if self._check_if_dead(): return
+        # I always route through show_enhanced_map, which builds the window if it's missing
+        # or reliably yanks the existing one back to the front. One door in.
+        self.show_enhanced_map()
+    def _save_path(self, name):
+        safe = "".join(c for c in name if c.isalnum() or c in " -_").strip()
+        return os.path.join(self.saves_dir, (safe or "universe") + ".rmsave")
+    def _list_saves(self):
+        try:
+            return sorted((fn[:-7] for fn in os.listdir(self.saves_dir) if fn.endswith(".rmsave")), key=str.lower)
+        except Exception:
+            return []
+    def _write_save(self, name, announce=True):
+        if not self.player:
+            if announce: self.append_colored("No game to save!\n", "error")
+            return False
+        try:
+            data = {"player": self.player, "world": self.world, "difficulty": self.difficulty, "width": self.width, "height": self.height,
+                    "total_lore_fragments_count": getattr(self, "total_lore_fragments_count", 0),
+                    "unlocked_achievements": [a.name for a in ACHIEVEMENTS if a.unlocked], "save_name": name}
+            with open(self._save_path(name), 'wb') as f: pickle.dump(data, f)
+            self.current_save_name = name
+            if announce: self.append_colored(f"💾 Universe '{name}' saved.\n", "success"); self.root.bell()
+            return True
+        except Exception as ex:
+            messagebox.showerror("Save Error", f"Failed to save: {ex}"); return False
+    def save_game(self):
+        if not self.player: self.append_colored("No game to save!\n", "error"); return
+        if self.current_save_name: self._write_save(self.current_save_name)
+        else: self.show_save_manager()
+    def _read_save(self, name):
+        path = self._save_path(name)
+        if not os.path.isfile(path): messagebox.showerror("Load Error", "That universe no longer exists."); return
+        try:
+            with open(path, 'rb') as f: data = pickle.load(f)
+            self.player = data["player"]; self.world = data["world"]; self._sanitize_world()
+            self.difficulty = data.get("difficulty", DifficultyLevel.NORMAL)
+            self.width = data.get("width", 12); self.height = data.get("height", 12)
+            self.total_lore_fragments_count = data.get("total_lore_fragments_count", 0)
+            self.current_save_name = data.get("save_name", name)
+            # Restore the achievement unlock state on load, so earned perks (free portal jumps,
+            # XP bonus, Plumbus Pro, all of it) survive a reload instead of quietly switching off
+            # when _recalc_passives runs against a fresh ACHIEVEMENTS list. Learned that one the hard way.
+            saved_unlocked = set(data.get("unlocked_achievements", []))
+            for a in ACHIEVEMENTS:
+                a.unlocked = a.name in saved_unlocked
+            self._vpad_lines = 0
+            self.set_button_states(menu=False)
+            self._close_all_popups()
+            self.append_colored(f"📁 Entered universe '{self.current_save_name}'.\n", "success"); self._recalc_passives(); self.print_room(); self.update_info_display(); self.update_enhanced_map(); self.update_minimap()
+            self.root.bell()
+        except Exception as ex: messagebox.showerror("Load Error", f"Failed to load save: {ex}")
+    def load_game(self): self.show_save_manager()
+    def show_save_manager(self):
+        win = tk.Toplevel(self.root); win.title("Choose Your Universe"); self._center_popup(win, 470, 470); win.transient(self.root); win.grab_set(); self._apply_icon(win)
+        tk.Label(win, text="🌀 Choose Your Universe", font=("Arial", 15, "bold")).pack(pady=(14, 2))
+        tk.Label(win, text="Load a saved universe, or spin up a brand-new one.", font=("Arial", 10)).pack(pady=(0, 8))
+        saves = self._list_saves()
+        lf = tk.LabelFrame(win, text="Saved Universes", font=("Arial", 10, "bold")); lf.pack(fill=tk.BOTH, expand=True, padx=14, pady=4)
+        listbox = tk.Listbox(lf, font=("Consolas", 11), height=7, activestyle="dotbox"); listbox.pack(fill=tk.BOTH, expand=True, padx=6, pady=(6, 4))
+        for nm in saves: listbox.insert(tk.END, nm)
+        if not saves:
+            listbox.insert(tk.END, "  (no saved universes yet)"); listbox.config(fg="#888")
+        else:
+            listbox.selection_set(0)
+        def do_load(event=None):
+            if not saves: return
+            sel = listbox.curselection()
+            if not sel: messagebox.showinfo("Pick One", "Select a universe to enter first."); return
+            name = saves[sel[0]]; win.destroy(); self._read_save(name)
+        tk.Button(lf, text="▶  Enter Selected Universe", font=("Arial", 11), command=do_load).pack(pady=(0, 8))
+        listbox.bind("<Double-Button-1>", do_load)
+        nf = tk.LabelFrame(win, text="New Universe", font=("Arial", 10, "bold")); nf.pack(fill=tk.X, padx=14, pady=(4, 12))
+        row = tk.Frame(nf); row.pack(fill=tk.X, padx=6, pady=(8, 4))
+        tk.Label(row, text="Name:", font=("Arial", 10)).pack(side=tk.LEFT)
+        namevar = tk.StringVar(); ent = tk.Entry(row, textvariable=namevar, font=("Arial", 11)); ent.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0))
+        def do_create(event=None):
+            name = namevar.get().strip()
+            if not name: messagebox.showerror("Name Required", "Give your new universe a name first."); return
+            if name in self._list_saves():
+                if not messagebox.askyesno("⚠️  Universe Already Exists",
+                        f"A universe named '{name}' already exists.\n\nStarting a new one here will WIPE IT FROM EXISTENCE. Every room, every quest, that entire universe, gone forever.\n\nObliterate it and start fresh?"):
+                    return
+            self.current_save_name = name; win.destroy(); self.start_new_game()
+        tk.Button(nf, text="✨  Create New Universe", font=("Arial", 11), command=do_create).pack(pady=(0, 8))
+        ent.bind("<Return>", do_create)
+        win.protocol("WM_DELETE_WINDOW", win.destroy); ent.focus_set()
+    def _apply_icon(self, win):
+        """Give a window the game's icon. Toplevel popups don't inherit the
+        main window's icon, so without this they show the generic Python feather
+        in the title-bar corner and taskbar."""
+        try:
+            if getattr(self, "icon_path", None) and os.path.exists(self.icon_path):
+                win.iconbitmap(self.icon_path)
+        except Exception:
+            pass
+    def _center_popup(self, win, w, h):
+        """Place a popup of size w x h in the middle of the screen."""
+        try:
+            win.update_idletasks()
+            sw = win.winfo_screenwidth(); sh = win.winfo_screenheight()
+            x = max(0, (sw - w) // 2); y = max(0, (sh - h) // 2)
+            win.geometry(f"{w}x{h}+{x}+{y}")
+        except Exception:
+            win.geometry(f"{w}x{h}")
+    def on_window_focus(self, event=None):
+        if hasattr(self, 'entry') and self.entry.winfo_exists(): self.entry.focus_set()
+    def on_window_click(self, event=None):
+        if hasattr(self, 'entry') and self.entry.winfo_exists(): self.entry.focus_set()
+LEGAL_DISCLAIMER_TEXT = """LEGAL NOTICE, DISCLAIMER, AND ACKNOWLEDGEMENT OF INTELLECTUAL PROPERTY RIGHTS
+
+PLEASE READ THIS NOTICE CAREFULLY AND IN FULL BEFORE USING THIS SOFTWARE.
+
+1. UNOFFICIAL, UNAFFILIATED FAN WORK.
+This program (the "Game") is an unofficial, non-commercial, fan-made work created solely for personal entertainment and educational purposes. It is NOT an official product. It is NOT created, produced, published, licensed, sponsored, endorsed, approved, or authorized by, and is in no way affiliated with, the owners of the "Rick and Morty" property or any of their subsidiaries, affiliates, parents, partners, agents, or licensors.
+
+2. OWNERSHIP OF INTELLECTUAL PROPERTY.
+"Rick and Morty," together with all associated characters, character names, likenesses, voices, catchphrases, dialogue, logos, designs, settings, locations, storylines, and all other related elements (collectively, the "Licensed Property"), are the exclusive intellectual property of, and are protected by the copyright, trademark, trade dress, and other laws of the United States and other countries owned by, their respective rights holders. Those rights holders include, without limitation:
+   - Cartoon Network, Inc., the registered owner of the "RICK AND MORTY" trademark (U.S. Trademark Reg. No. 5407816);
+   - Warner Bros. Discovery, Inc., the ultimate parent company of Cartoon Network, Inc.;
+   - Adult Swim, the programming brand and network on which the series is broadcast; and
+   - the series' co-creators, Dan Harmon and Justin Roiland.
+All rights in and to the Licensed Property are reserved by their respective owners. All trademarks, service marks, trade names, and registered marks referenced herein are the property of their respective owners.
+
+3. NO CLAIM OF OWNERSHIP BY THE DEVELOPER.
+The developer of this Game claims NO ownership of, and asserts NO right, title, or interest in, the Licensed Property. The developer does not own any character, name, story, setting, dialogue, logo, or other element derived from "Rick and Morty." Any such elements appearing in this Game remain the sole and exclusive property of their respective owners. The developer's only claim of ownership extends to the original computer source code and original software components personally authored by the developer, and that claim expressly excludes the Licensed Property.
+
+4. NO INFRINGEMENT INTENDED; NOMINATIVE USE.
+No copyright or trademark infringement is intended. References to the Licensed Property are made nominatively, solely to identify the source material that inspired this non-commercial fan work. Nothing in this Game is intended to compete with, substitute for, dilute, tarnish, or imply any association with, sponsorship of, or endorsement by the rights holders. Any names, marks, or material used are used for identification and commentary purposes only.
+
+5. NON-COMMERCIAL DISTRIBUTION.
+This Game is distributed free of charge. The developer derives no commercial benefit from it and does not sell, rent, license, monetize, or otherwise commercially exploit it or the Licensed Property in any manner.
+
+6. NO LICENSE GRANTED; COMPLIANCE AND TAKEDOWN.
+This notice does not grant, transfer, assign, or convey any right, title, license, permission, or interest in the Licensed Property to any person. The developer respects the rights of the owners of the Licensed Property and will promptly comply with any lawful request from a rights holder to cease use of, modify, or remove any allegedly infringing material.
+
+7. NO WARRANTY; LIMITATION OF LIABILITY.
+This Game is provided "AS IS" and "AS AVAILABLE," without warranty of any kind, whether express, implied, or statutory, including but not limited to the implied warranties of merchantability, fitness for a particular purpose, title, and non-infringement. To the fullest extent permitted by applicable law, in no event shall the developer be liable for any direct, indirect, incidental, special, consequential, or exemplary damages, or for any claim or other liability whatsoever, arising from, out of, or in connection with the Game, its use, or this notice.
+
+8. OFFICIAL PROPERTY.
+For the official "Rick and Morty" property, please visit the rights holders' official websites listed below this text.
+
+By selecting "I AGREE & CONTINUE," you acknowledge that you have read and understood this notice, that you understand the developer does not own the Licensed Property and claims no rights in it, and that this is an unofficial, non-commercial, fan-made work. If you do not agree, select "DECLINE & EXIT" to close the program without launching it.
+"""
+
+
+def show_legal_disclaimer(root):
+    """Modal IP/legal notice. Must be acknowledged before the game builds.
+    Returns True if the user agreed, False if they declined or closed it."""
+    BG = "#0a0a0f"; PANEL = "#05050a"; FG = "#AFFF94"; HDR = "#FFD700"
+    LINK = "#40C4FF"; OKC = "#4ADE80"; NOC = "#C40202"
+    state = {"agreed": False}
+
+    dlg = tk.Toplevel(root)
+    dlg.title("Legal Disclaimer - Rick and Morty - Multiverse Mayhem")
+    dlg.configure(bg=BG)
+    try:
+        if hasattr(sys, "_MEIPASS"):
+            _ip = os.path.join(sys._MEIPASS, "icon.ico")
+        else:
+            _ip = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
+        if not os.path.exists(_ip):
+            _ip = "icon.ico"
+        if os.path.exists(_ip):
+            dlg.iconbitmap(_ip)
+    except Exception:
+        pass
+
+    tk.Label(dlg, text="LEGAL NOTICE & INTELLECTUAL PROPERTY DISCLAIMER",
+             font=("Consolas", 14, "bold"), bg=BG, fg=HDR).pack(fill=tk.X, padx=16, pady=(14, 2))
+    tk.Label(dlg, text="Please read this notice in full before continuing.",
+             font=("Consolas", 10), bg=BG, fg=FG).pack(fill=tk.X, padx=16, pady=(0, 8))
+
+    body = scrolledtext.ScrolledText(dlg, wrap="word", font=("Consolas", 10),
+                                     bg=PANEL, fg=FG, insertbackground=FG, borderwidth=0,
+                                     highlightthickness=1, highlightbackground="#222222",
+                                     width=92, height=22)
+    body.pack(fill=tk.BOTH, expand=True, padx=16, pady=4)
+    body.insert("1.0", LEGAL_DISCLAIMER_TEXT)
+    body.configure(state="disabled")
+
+    def _open(url):
+        try:
+            import webbrowser
+            webbrowser.open_new_tab(url)
+        except Exception:
+            pass
+
+    linkrow = tk.Frame(dlg, bg=BG); linkrow.pack(fill=tk.X, padx=16, pady=(2, 0))
+    tk.Label(linkrow, text="Official property:", font=("Consolas", 10), bg=BG, fg=FG).pack(side=tk.LEFT)
+    for _label, _url in (("Adult Swim (Rick and Morty)", "https://www.adultswim.com/videos/rick-and-morty"),
+                         ("Warner Bros. Discovery", "https://www.wbd.com")):
+        _lk = tk.Label(linkrow, text=_label, font=("Consolas", 10, "underline"),
+                       bg=BG, fg=LINK, cursor="hand2")
+        _lk.pack(side=tk.LEFT, padx=(10, 0))
+        _lk.bind("<Button-1>", lambda e, u=_url: _open(u))
+
+    def _decline():
+        state["agreed"] = False; dlg.destroy()
+
+    def _agree():
+        state["agreed"] = True; dlg.destroy()
+
+    btnrow = tk.Frame(dlg, bg=BG); btnrow.pack(fill=tk.X, padx=16, pady=12)
+    tk.Button(btnrow, text="DECLINE & EXIT", font=("Arial", 11, "bold"), bg=NOC, fg="white",
+              activebackground="#8A0000", activeforeground="white", command=_decline).pack(side=tk.LEFT)
+    tk.Button(btnrow, text="I AGREE & CONTINUE", font=("Arial", 11, "bold"), bg=OKC, fg="black",
+              activebackground="#2EA043", activeforeground="black", command=_agree).pack(side=tk.RIGHT)
+
+    dlg.protocol("WM_DELETE_WINDOW", _decline)
+    W, H = 780, 660
+    try:
+        dlg.update_idletasks()
+        sw = dlg.winfo_screenwidth(); sh = dlg.winfo_screenheight()
+        x = max(0, (sw - W) // 2); y = max(0, (sh - H) // 2)
+        dlg.geometry(f"{W}x{H}+{x}+{y}")
+    except Exception:
+        dlg.geometry(f"{W}x{H}")
+    dlg.minsize(560, 440)
+    dlg.grab_set()
+    dlg.lift()
+    try:
+        dlg.attributes("-topmost", True)
+        dlg.after(400, lambda: dlg.winfo_exists() and dlg.attributes("-topmost", False))
+    except Exception:
+        pass
+    dlg.focus_force()
+    root.wait_window(dlg)
+    return state["agreed"]
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    # Hide the main window until the legal notice has been acknowledged, so nothing
+    # else opens first. Decline = exit before the game ever builds.
+    root.withdraw()
+    if not show_legal_disclaimer(root):
         root.destroy()
-root.after(400, love)
-root.mainloop()
+        sys.exit(0)
+    root.deiconify()
+    # The window icon gets set inside EnhancedGameApp.__init__ and applied to every popup,
+    # so the entire app shows icon.ico the same everywhere. Consistency, Morty.
+    app = EnhancedGameApp(root)
+    root.mainloop()

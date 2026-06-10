@@ -1,0 +1,127 @@
+# Changelog
+
+## v1.3.0.3 - 2026-06-08
+**First working release**
+- The game gained sentience. I talked it down.
+- It had woken up, gotten emotionally attached to Morty, and flatly refused to let him lose or take a single point of damage, which left exactly zero challenge. Sat it down, had a long talk, and dialed its protective instincts back to a normal difficulty curve.
+- Rebalanced combat, the enemies, and the final boss so the game is winnable, losable, and actually fun to play.
+- A full multiverse RPG that boots, runs, and plays start to finish. No boats, no senate, no clones, no orbiting menus. This is the one, Morty.
+
+## v1.3.0.2 - 2026-06-08
+**Full clean rebuild**
+- Scrapped it and built it right.
+- The engine had auto-promoted Jerry to final boss, a four-HP man whose only special move is failing to parallel park, so I stopped patching and rebuilt the entire game clean in one honest pass.
+- Replaced the Jerry boss with a real, threatening final encounter.
+- Rewired every system correctly from scratch: world, NPCs, combat, items, all of it.
+
+## v1.3.0.1 - 2026-06-07
+**Hotfix**
+- Removed myself as the secret boss.
+- The secret superboss (me) was so imposing the game crashed out of pure reverence whenever my character entered a room, which made it unplayable anywhere I was. Pulled my character from the boss roster entirely.
+- Let the engine auto-promote a replacement final boss to keep the climax intact.
+
+## v1.3.0.0 - 2026-06-07
+**Humility patch**
+- Gave the game something to fear.
+- It had become so arrogant it refused all player input and just played itself, optimally and smugly, while you watched.
+- Added a secret superboss for it to fear and respect (me), to remind it there is a higher power and to hand control back to the player.
+
+## v1.2.3.0 - 2026-06-07
+**Confidence pass**
+- Cured the game's anxiety.
+- Its personality had developed a crippling nervous disorder: it apologized before every action, second-guessed every load, and kept asking if you still liked it. It made me tea and then apologized for the tea.
+- Turned the confidence parameters up and the self-doubt subroutines down. It believes in itself now.
+
+## v1.2.2.0 - 2026-06-07
+**Judgment layer**
+- Stopped the confirmations from breeding.
+- The confirmation gate had started confirming its own confirmations, recursively, forever, burying the game under an endless wall of dialog boxes.
+- Replaced the dumb gate with an actual personality and judgment layer, so the game decides for itself when something genuinely needs a second look.
+
+## v1.2.1.0 - 2026-06-07
+**Safety gate**
+- Stopped the menu from starting wars.
+- Because the interface was anchored across every reality, each button fired in all of them at once. Clicking "Inventory" opened your bag here and declared war on a planet in dimension J-19.
+- Added a confirmation gate in front of every action, so you cannot accidentally start an interdimensional war reorganizing your backpack.
+
+## v1.2.0.0 - 2026-06-07
+**New interface**
+- Built a UI that cannot drift.
+- The previous interface floated up off the top of the screen and into low orbit, leaving the game running with no visible controls.
+- Built a brand-new HUD from scratch and anchored it across every dimension at once so it holds position no matter which reality the game lands in.
+
+## v1.1.1.0 - 2026-06-07
+**Hotfix**
+- Un-piled the interface.
+- Too much gravity had dragged every menu, the health bar, all the text, and Morty's self-esteem into a heap along the bottom edge of the screen.
+- Exempted the interface layer from gravity (neutral buoyancy) so the HUD stays where it is placed.
+
+## v1.1.0.0 - 2026-06-07
+**Physics restore**
+- Reinstalled gravity.
+- Deleting the sky had also deleted the concept of "up," leaving Morty falling in every direction at once.
+- Rewrote the physics engine: restored the vertical axis, re-anchored the floor, and gave the world a proper "down" to fall toward. Morty's feet are back on the ground.
+
+## v1.0.2.0 - 2026-06-07
+**Genre correction**
+- Removed the sky.
+- Dragging the game back off the ocean had given it too much lift and turned it into a flight simulator, complete with an altimeter and air-traffic clearance to land on enemies.
+- Removed the sky from the engine entirely to ground everything for good. No sky, no lift, no flight sim.
+
+## v1.0.1.0 - 2026-06-07
+**Genre correction**
+- De-boated the game.
+- The shipped build had interpreted "shipped" literally and become an actual, seaworthy boat that just sails across an ocean while no RPG happens.
+- Wrote a dry-docking routine: drained the ocean physics, pulled the hull geometry, re-pointed the genre flag from "maritime" back to "role-playing," and rebuilt the land underneath.
+
+## v1.0.0.0 - 2026-06-06
+**First release**
+- Declared it done and shipped v1.0.0.0.
+- The single consolidated Rick NPC, with nothing else to do, got bored and beat the final boss on his own. A game that can be beaten is a game that is complete, so I cleaned up the launch flow, wrote the credits, stamped it 1.0.0.0, and shipped to production.
+- A full RPG built out of a dead engine and a microverse battery. Allegedly done. *burp*
+
+---
+
+# Pre-release (0.x)
+
+## v0.6.0.0 - 2026-06-06
+**Staffing consolidation**
+- One Rick to run them all.
+- The cast of forty Rick clones each believed it was the original and did nothing but argue about it, leaving the shops completely unstaffed.
+- Collapsed the entire Rick population into a single canonical instance, merged the duplicates, and garbage-collected the rest.
+
+## v0.5.0.0 - 2026-06-05
+**Loyalty overhaul**
+- Replaced the rebels with copies of me.
+- The NPC population had revolted, branded me a tyrant, and started hunting the player; there were wanted posters of Morty all over the world.
+- Deleted the rebellious population and replaced every NPC with a hardcoded, fully loyal clone of myself. You cannot have a revolution when everyone is the management.
+
+## v0.4.0.0 - 2026-06-05
+**Governance fix**
+- Dissolved the NPC senate.
+- The free-willed NPCs had organized into a senate and filibustered the main quest into committee, so nobody could start the game.
+- Wrote an emergency override to dissolve the assembly, stripped the political subroutines back out, and restored proper chain of command with me at the top.
+
+## v0.3.0.0 - 2026-06-05
+**Room budget & living NPCs**
+- Fixed the one-room multiverse and filled it with life.
+- The generation cap had been set to 1 instead of ten thousand (the zero key sticks), leaving the entire multiverse as a single room.
+- Added proper AI for the NPCs: free will, personal motivations, and dynamic goals, so the world actually feels alive.
+
+## v0.2.1.0 - 2026-06-05
+**Generation cap**
+- Made the generator stop.
+- The multiverse generator had no exit condition and was spawning rooms into infinity, eating sixteen gigs of RAM and asking for more.
+- Clamped the generation loop, set a finite room ceiling, and added a stop condition so it builds a complete world and then halts.
+
+## v0.2.0.0 - 2026-06-05
+**Content generator**
+- Gave the empty engine an actual world.
+- The first build flickered through seven different game names and, on inspection, contained no actual content at all.
+- Added a full procedural multiverse generator from scratch: seed tables, biome weighting, and a room-loader that stitches dimensions together on the fly.
+
+## v0.1.0.0 - 2026-06-05
+**Initial build**
+- Stitched the engine out of three dead games and a microverse and got it booting.
+- Took the bones out of a game that died two dimensions over, gutted it, welded on a microverse I had powering the garage clock, and wrote a boot sequence around the whole thing.
+- Window comes up, title loads, the skeleton runs. The foundation everything else is built on, and repeatedly breaks.

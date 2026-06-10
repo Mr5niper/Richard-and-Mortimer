@@ -1,0 +1,24 @@
+# .gitignore  --  Rick and Morty - Multiverse Mayhem
+#
+# Strategy: ignore EVERYTHING, then allow back only the files that make up the
+# source project. Anything not explicitly listed below stays out of the repo
+# (build output, virtual envs, caches, save files, screenshots, archives,
+# notes, old version copies, the changelog, etc.).
+
+# 1) Ignore everything by default
+*
+
+# 2) ...but keep these (the code, the build script, the version info, the icon)
+!.gitignore
+!CHANGELOG.md
+!README.md
+!LICENSE
+!Rick and Morty RPG.py
+!BUILD_EXE.bat
+!version.txt
+!icon.ico
+
+# ---------------------------------------------------------------------------
+# If you rename the game script, update the line above to match the new name.
+# To also track the changelog, add:   !CHANGELOG.md
+# ---------------------------------------------------------------------------

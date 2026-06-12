@@ -11,7 +11,9 @@ A single-player, text-driven RPG that runs in a little window on your Windows
 machine. You play Morty (you don't get a choice, you're always Morty, deal with
 it) wandering a 12 by 12 grid of the multiverse, talking to idiots, whacking
 monsters, grabbing loot, and slowly building the one thing I actually care about.
-
+<br><br>
+<img width="1752" height="969" alt="image" src="https://github.com/user-attachments/assets/95e378af-2676-4b93-bb0c-434ce08e1992" />
+<br><br>
 No 3D garbage, no microtransactions, no "live service." Just words, a map, and
 your famously questionable decision-making.
 

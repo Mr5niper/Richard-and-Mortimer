@@ -523,6 +523,7 @@ class Player:
         self.cromulon_defeated_count = 0
         self.plumbuses_collected    = 0
         self.mega_seeds_used        = 0
+        self.mega_seed_injector_built = False  # Flips True once the Injector is built; after that, Mega Seeds are usable items, not crafting stock.
         self.xp_bonus_percent       = 0
         self.current_combat_turn    = 0
         self.meeseeks_attack_doubled = False
@@ -1020,6 +1021,7 @@ class EnhancedGameApp:
             "Fleeb": 75,
             "Microverse Battery": 30,
             "Scavenged Parts": 5,
+            "Mega Seed": 10,
         }
         main_quest_items = [q['item'] for q in EXTENDED_QUESTS] + [q['rick_gift'] for q in EXTENDED_QUESTS]
         
@@ -1044,7 +1046,7 @@ class EnhancedGameApp:
             
             self.player.federation_credits -= price
             
-            if item_name in ["Healing Serum", "Energy Cell", "Fleeb"]:
+            if item_name in ["Healing Serum", "Energy Cell", "Fleeb"] or (item_name == "Mega Seed" and getattr(self.player, "mega_seed_injector_built", False)):
                 self.player.inventory.append(item_name)
             else:
                 self.player.crafting_materials.append(item_name)
@@ -1301,7 +1303,7 @@ class EnhancedGameApp:
         # Top level: I only offer the actions you can actually pull off RIGHT NOW. No teasing.
         if argi == 0:
             return self._relevant_actions()
-        v = verb; shop_inventory_keys = ["Healing Serum", "Energy Cell", "Rickium Alloy", "Fleeb", "Microverse Battery", "Scavenged Parts"]
+        v = verb; shop_inventory_keys = ["Healing Serum", "Energy Cell", "Rickium Alloy", "Fleeb", "Microverse Battery", "Scavenged Parts", "Mega Seed"]
         # These verbs take a single, maybe multi-word, target. I only offer choices for the first
         # argument slot so a multi-word item can't get jammed back in on itself. Edge cases, ugh.
         if argi >= 2 and v not in ("portal_jump", "sense"):
@@ -1840,6 +1842,15 @@ class EnhancedGameApp:
             if recipe_name == "Mega Seed Injector":
                 self.player.max_charge += 10; self.player.charge = self.player.max_charge; self.player.hp = max(1, self.player.hp - 5); self.player.mega_seeds_used += 1
                 self.append_colored("🧠 Mega Seed Injector boosts max charge by 10 but causes nausea (lose 5 HP)!\n", "achievement")
+                if not getattr(self.player, "mega_seed_injector_built", False):
+                    self.player.mega_seed_injector_built = True
+                    moved = 0
+                    while "Mega Seed" in self.player.crafting_materials:
+                        self.player.crafting_materials.remove("Mega Seed"); self.player.inventory.append("Mega Seed"); moved += 1
+                    if moved:
+                        self.append_colored(f"🌱 Injector online. Your {moved} leftover Mega Seed(s) are now usable items, moved to your inventory.\n", "success")
+                    else:
+                        self.append_colored("🌱 Injector online. Mega Seeds now count as usable items, not crafting parts, from here on.\n", "lore")
             elif recipe_name == "Interdimensional Goggles":
                 for pos, rm in self.world.items():
                     if rm.get("npc") or rm.get("monster") or rm.get("items") or rm.get("motif") is not None: rm["visited"] = True
@@ -2391,6 +2402,7 @@ class EnhancedGameApp:
             for pos, rm in self.world.items():
                 for it in rm["items"][:]:
                     if it == "Federation Credits": p.federation_credits += random.randint(5, 15)
+                    elif it == "Mega Seed" and getattr(p, "mega_seed_injector_built", False): p.inventory.append(it)
                     elif any(it in r["materials"] for r in CRAFTING_RECIPES.values()): p.crafting_materials.append(it)
                     else: p.inventory.append(it)
                     p.total_items_collected += 1; scooped += 1
@@ -2406,6 +2418,7 @@ class EnhancedGameApp:
                     mon = rm["monster"]
                     for it in (mon.loot or [])[:]:
                         if it == "Federation Credits": p.federation_credits += 1
+                        elif it == "Mega Seed" and getattr(p, "mega_seed_injector_built", False): p.inventory.append(it)
                         elif any(it in r["materials"] for r in CRAFTING_RECIPES.values()): p.crafting_materials.append(it)
                         else: p.inventory.append(it)
                         p.total_items_collected += 1; grabbed += 1
@@ -2423,6 +2436,10 @@ class EnhancedGameApp:
                 if itm not in p.inventory:
                     p.inventory.append(itm); crafted_now.append(itm)
                     p.items_crafted += 1; p.total_items_collected += 1
+            if "Mega Seed Injector" in p.inventory and not getattr(p, "mega_seed_injector_built", False):
+                p.mega_seed_injector_built = True
+                while "Mega Seed" in p.crafting_materials:
+                    p.crafting_materials.remove("Mega Seed"); p.inventory.append("Mega Seed")
             self.append_colored(f"🔧 Cheat: {len(crafted_now)} gadget(s) granted: {', '.join(crafted_now) if crafted_now else '(already had them all)'}.\n", "success")
             self._recalc_passives(); self.update_info_display(); self.update_enhanced_map(); self.update_minimap()
             check_achievements(p, self.world, self); return
@@ -2710,7 +2727,8 @@ class EnhancedGameApp:
             check_achievements(self.player, self.world, self)
             return
         is_material = any(item_name in r["materials"] for r in CRAFTING_RECIPES.values())
-        if is_material: self.player.crafting_materials.append(item_name)
+        if item_name == "Mega Seed" and getattr(self.player, "mega_seed_injector_built", False): self.player.inventory.append(item_name)
+        elif is_material: self.player.crafting_materials.append(item_name)
         else: self.player.inventory.append(item_name)
         room["items"].remove(item_name); self._strip_found_sentence(room, item_name); self.player.total_items_collected += 1
         is_main_quest_item = item_name in [q["item"] for q in EXTENDED_QUESTS]
@@ -2862,7 +2880,9 @@ class EnhancedGameApp:
             elif item_name == "Schmeckle Converter":
                 if p.federation_credits >= 5:
                     p.federation_credits -= 5; available_materials = [mat for recipe_data in CRAFTING_RECIPES.values() for mat in recipe_data["materials"]]
-                    new_material = random.choice(available_materials); p.crafting_materials.append(new_material); p.total_items_collected += 1
+                    new_material = random.choice(available_materials); p.total_items_collected += 1
+                    if new_material == "Mega Seed" and getattr(p, "mega_seed_injector_built", False): p.inventory.append(new_material)
+                    else: p.crafting_materials.append(new_material)
                     self.append_colored(f"♻️ Converter produces {self._np(new_material)}! Lost 5 Credits.\n", "success"); p.inventory.remove(item_name)
                 else: self.append_colored("❌ Need 5 Federation Credits to use the Schmeckle Converter.\n", "error"); self.root.bell(); return
             elif item_name == "Interdimensional Goggles":
@@ -3004,7 +3024,8 @@ class EnhancedGameApp:
             elif motif_data["motif"] == "alien_market":
                 if random.random() < 0.2: # 20% shot at an actually good item.
                     rare_item = random.choice(["Plumbus", "Mega Seed", "Fleeb"])
-                    p.inventory.append(rare_item)
+                    if rare_item == "Mega Seed" and not getattr(p, "mega_seed_injector_built", False): p.crafting_materials.append(rare_item)
+                    else: p.inventory.append(rare_item)
                     self.append_colored(f"The box contains... a {rare_item}! What a steal!\n", "achievement")
                 else: # 80% of the time it's junk. That's gambling, Morty.
                     self.append_colored("You open the box to find a perfectly ordinary rock. You've been scammed.\n", "error")
@@ -3131,6 +3152,13 @@ class EnhancedGameApp:
         try:
             with open(path, 'rb') as f: data = pickle.load(f)
             self.player = data["player"]; self.world = data["world"]; self._sanitize_world()
+            # Backfill the Mega Seed toggle for saves made before it existed. If the Injector is
+            # already built, seeds are usable items now, so flip the flag and migrate any loose ones.
+            if not hasattr(self.player, "mega_seed_injector_built"):
+                self.player.mega_seed_injector_built = ("Mega Seed Injector" in self.player.inventory)
+            if self.player.mega_seed_injector_built:
+                while "Mega Seed" in self.player.crafting_materials:
+                    self.player.crafting_materials.remove("Mega Seed"); self.player.inventory.append("Mega Seed")
             self.difficulty = data.get("difficulty", DifficultyLevel.NORMAL)
             self.width = data.get("width", 12); self.height = data.get("height", 12)
             self.total_lore_fragments_count = data.get("total_lore_fragments_count", 0)

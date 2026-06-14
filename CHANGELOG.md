@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.4.0.0 - 2026-06-14
+**The talking-and-ambushes update**
+- Everybody in the multiverse learned to actually hold a conversation, and now stuff hides in rooms you already cleared and jumps out at you. Big one.
+- Rebuilt every conversation in the game. Me, the five chapter weirdos, the five side-quest charity cases, and Glexo the pawn guy all run a real staged dialogue now: they say their piece once, then cycle through fresh lines instead of grunting the same canned response forever. Pre-quest intros too, so nobody blurts out a job before you've taken it.
+- Added hidden enemies. Every third kill, no matter what kind, a brand-new creature quietly slinks into a room you already revealed. No marker on the map, so you stroll into an empty-looking room and BAM, big red SURPRISE ATTACK. They only ever drop Credits, they never count toward the achievement or 100 percent, and the absolute max you could possibly kill is calculated and shown so the completionists have a number to obsess over. Twenty-eight of them, no repeats.
+- Hidden enemies relocate when you flee. Run from one and it skulks off to another room you've explored instead of waiting politely where you left it, then surprises you all over again somewhere new.
+- Glexo runs a buyback shelf now. Sell him something and it lands on his used shelf so you can buy it back later at a markup, because regret has a price. Tab-completion knows about the shelf too.
+- The game no longer shoves you out the door the second the OMNI-CORE lights up. The story ending plays, but you can keep going to mop up everything, and there's a real 100 percent ending waiting for the Morty who finishes the job.
+- Fixed intel rooms locking you out of 100 percent. Finishing a chapter used to grab that room's hidden intel before you could, leaving it uncompletable. Now the intel sticks around and a secret marker points at it until you search it out.
+- Fixed four of the chapter characters reacting like they'd already pocketed the gift before Morty handed it over. They notice the thing in your hands now.
+- Fixed the Mega Seed achievement being mathematically impossible to earn. It can be earned now. Wild concept.
+- Fixed the Windows taskbar icon while I was elbow-deep in there anyway.
+- Surprise-attack banner now matches the rest of the combat-red text and sits left-justified like everything else, instead of floating in the middle in some rogue shade of *burp* red.
+
 ## v1.3.0.3 - 2026-06-08
 **First working release**
 - The game gained sentience. I talked it down.

@@ -1823,7 +1823,7 @@ class EnhancedGameApp:
         # A 12 by 12 grid. 144 rooms. Do the math, I already did.
         self.width, self.height = 12, 12
         self.root = root
-        self.root.title("Rick and Morty - Multiverse Mayhem v1.3.0.3")
+        self.root.title("Rick and Morty - Multiverse Mayhem v1.4.0.0")
         # Windows slaps the Python interpreter's icon on the TASKBAR by default because it lumps
         # our window in under pythonw.exe. So I declare our own AppUserModelID, which makes Windows
         # treat this like its own real application and finally show OUR icon in the taskbar.

@@ -2310,7 +2310,7 @@ class EnhancedGameApp:
         if not (hasattr(self, "map_popup") and self.map_popup and hasattr(self, "map_text_widget") and self.map_text_widget and self.map_popup.winfo_exists()): return
         letters = string.ascii_uppercase; cellw = 3
         self.map_text_widget.configure(state="normal"); self.map_text_widget.delete(1.0, tk.END)
-        tag_colors = {"map_player": "#FFFFFF", "map_monster": "#FF6B6B", "map_npc": "#FFD700", "map_shop": "#FFA500", "map_subnpc": "#40C4FF", "map_item": "#E67BFF", "map_quest": "#4ADE80", "map_intel": "#FFD700", "map_empty": "#888888", "map_monwarn": "#C40202", "map_questwarn": "#019644", "map_subwarn": "#019644", "map_unknown": "#555555", **DIM_SENSE_COLORS}
+        tag_colors = {"map_player": "#FFFFFF", "map_monster": "#FF6B6B", "map_npc": "#FFD700", "map_shop": "#FFA500", "map_subnpc": "#40C4FF", "map_item": "#E67BFF", "map_quest": "#4ADE80", "map_intel": "#2A4DAE", "map_empty": "#888888", "map_monwarn": "#C40202", "map_questwarn": "#019644", "map_subwarn": "#019644", "map_unknown": "#555555", **DIM_SENSE_COLORS}
         for tag, col in tag_colors.items(): self.map_text_widget.tag_config(tag, foreground=col)
         self.map_text_widget.insert(tk.END, "   ");
         for x in range(1, self.width + 1): self.map_text_widget.insert(tk.END, f"{letters[x-1]}".center(cellw), ("map_empty",))
@@ -2334,9 +2334,12 @@ class EnhancedGameApp:
                 elif room.get("motif") is not None:
                     solved = (room.get("subquest_done") or (room.get("quest_idx") is not None and room["quest_idx"] < self.player.quest_idx))
                     if not solved: symbol, tag = "[Q]", "map_quest"
-                    elif room.get("hidden_lore") and not room.get("lore_discovered"): symbol, tag = "[?]", "map_intel"
+                    elif room.get("hidden_lore") and not room.get("lore_discovered"): symbol, tag = "[!]", "map_intel"
                     else: symbol, tag = "[ ]", "map_empty"
-                self.map_text_widget.insert(tk.END, symbol, tag)
+                if tag == "map_intel":
+                    self.map_text_widget.insert(tk.END, "[", "map_empty"); self.map_text_widget.insert(tk.END, "!", "map_intel"); self.map_text_widget.insert(tk.END, "]", "map_empty")
+                else:
+                    self.map_text_widget.insert(tk.END, symbol, tag)
             self.map_text_widget.insert(tk.END, "\n")
         _W = 20
         _pairs = [("@ = You", "I = Items (or Credits)"),
@@ -2344,7 +2347,7 @@ class EnhancedGameApp:
                   ("S = Side Quest NPC", "Q = Quest Room"),
                   ("$ = Pawn Shop", "H = Citadel Hub")]
         legend = "\nLEGEND:\n" + "".join(l.ljust(_W) + r + "\n" for l, r in _pairs)
-        legend += "? = Unseen Dimension\ngold ? = Intel to search here\n"
+        legend += "? = Unseen Dimension\n"
         self.map_text_widget.tag_config("map_legend", font=("Consolas", 15))
         self.map_text_widget.insert(tk.END, legend, "map_legend"); self.map_text_widget.configure(state="disabled")
     def show_enhanced_map(self):
@@ -2402,7 +2405,7 @@ class EnhancedGameApp:
     def update_minimap(self):
         if not self.player or not self.world: return
         self.minimap_text.config(state="normal"); self.minimap_text.delete(1.0, tk.END)
-        tags = {"mini_player": "#FFFFFF", "mini_monster": "#FF6B6B", "mini_npc": "#FFD700", "mini_shop": "#FFA500", "mini_subnpc": "#40C4FF", "mini_item": "#E67BFF", "mini_quest": "#4ADE80", "mini_intel": "#FFD700", "mini_empty": "#888888", "mini_unknown": "#555555", **DIM_SENSE_COLORS}
+        tags = {"mini_player": "#FFFFFF", "mini_monster": "#FF6B6B", "mini_npc": "#FFD700", "mini_shop": "#FFA500", "mini_subnpc": "#40C4FF", "mini_item": "#E67BFF", "mini_quest": "#4ADE80", "mini_intel": "#2A4DAE", "mini_empty": "#888888", "mini_unknown": "#555555", **DIM_SENSE_COLORS}
         for tag, col in tags.items(): self.minimap_text.tag_config(tag, foreground=col)
         px, py = self.player.x, self.player.y; start_x = max(1, px - 2); start_y = max(1, py - 2)
         end_x = min(self.width, start_x + 4); end_y = min(self.height, start_y + 4)
@@ -2428,12 +2431,15 @@ class EnhancedGameApp:
                 elif room.get("motif") is not None:
                     solved = (room.get("subquest_done") or (room.get("quest_idx") is not None and room["quest_idx"] < self.player.quest_idx))
                     if not solved: symbol, tag = "[Q]", "mini_quest"
-                    elif room.get("hidden_lore") and not room.get("lore_discovered"): symbol, tag = "[?]", "mini_intel"
+                    elif room.get("hidden_lore") and not room.get("lore_discovered"): symbol, tag = "[!]", "mini_intel"
                     else: symbol, tag = "[ ]", "mini_empty"
-                self.minimap_text.insert(tk.END, symbol, tag)
+                if tag == "mini_intel":
+                    self.minimap_text.insert(tk.END, "[", "mini_empty"); self.minimap_text.insert(tk.END, "!", "mini_intel"); self.minimap_text.insert(tk.END, "]", "mini_empty")
+                else:
+                    self.minimap_text.insert(tk.END, symbol, tag)
             self.minimap_text.insert(tk.END, "\n")
         self.minimap_text.insert(
-            tk.END, "\nLEGEND:\n@ = You        S = Side-NPC\nE = Enemy      I = Items\nN = Main-NPC   Q = Quest-Room\n$ = Pawn Shop  ? = Unseen\nH = Citadel Hub  [ ] = Empty\ngold ? = Intel to search here", ("legend",)); self.minimap_text.config(state="disabled")
+            tk.END, "\nLEGEND:\n@ = You        S = Side-NPC\nE = Enemy      I = Items\nN = Main-NPC   Q = Quest-Room\n$ = Pawn Shop  ? = Unseen\nH = Citadel Hub  [ ] = Empty", ("legend",)); self.minimap_text.config(state="disabled")
     def toggle_crafting(self):
         if self._check_if_dead(): return
         if not self.player: self.append_colored("Start a game to craft!\n", "error"); return
@@ -3706,7 +3712,6 @@ class EnhancedGameApp:
                     self.append_colored(f"🎁 You obtained: {item_name}. Take it to Rick.\n", "success")
                     self.grant_xp(15, "special action: story item"); self._advance_step()
                     self.update_info_display(); check_achievements(p, self.world, self)
-                    if "hidden_lore" in room and not room.get("lore_discovered"): self.discover_lore()
                     return
                 # Not the right time for this room. Come back later.
                 self.append_colored("You poke around, but nothing happens here yet. Follow the story's lead (try 'hint').\n", "lore"); return
@@ -3726,7 +3731,6 @@ class EnhancedGameApp:
                     self.append_colored(f"🎁 You obtained: {need}. Return it to {subq['npc']}.\n", "success")
                     self.grant_xp(12, "special action: side item")
                     self.update_info_display(); check_achievements(p, self.world, self)
-                    if "hidden_lore" in room and not room.get("lore_discovered"): self.discover_lore()
                     return
                 else:
                     self.append_colored(f"You {verb}, but nothing comes of it. You need the {subq['key_item']} first. ({subq['key_hint']})\n", "lore"); return

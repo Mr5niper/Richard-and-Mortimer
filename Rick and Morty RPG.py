@@ -1883,6 +1883,8 @@ class EnhancedGameApp:
         self.text = scrolledtext.ScrolledText(left_frame, width=80, height=30, font=("Cascadia Mono", 13), state='disabled', bg='#0a0a0f', fg='#AFFF94', wrap=tk.WORD); self.text.pack(fill=tk.BOTH, expand=True); self.text.bind("<Configure>", self._on_text_resize)
         self.text.tag_config("center", justify="center"); self.text.tag_config("quest", foreground="#FFD700"); self.text.tag_config("combat", foreground="#FF6B6B"); self.text.tag_config("achievement", foreground="#98D8E8")
         self.text.tag_config("lore", foreground="#DDD6FE"); self.text.tag_config("error", foreground="#FF4444"); self.text.tag_config("success", foreground="#4ADE80"); self.text.tag_config("banner", font=("Consolas", 28, "bold"), foreground="#FFD700", justify="center"); self.text.tag_config("intro_text", font=("Consolas", 11), foreground="#DDD6FE", justify="center")
+        # Big, loud, bold alert for when a hidden ambusher jumps Morty out of an empty-looking room, so nobody's left going "wait, where did THAT come from?"
+        self.text.tag_config("surprise", font=("Consolas", 16, "bold"), foreground="#FF3B3B", justify="center")
         self.entry = tk.Entry(left_frame, width=80, font=("Consolas", 13), bg="#000000", fg="#FFFFFF", insertbackground="#FFFFFF", disabledbackground="#000000", disabledforeground="#FFFFFF"); self.entry.pack(fill=tk.X, pady=(5, 0))
         self.entry.bind("<Up>", self._entry_arrow_up); self.entry.bind("<Down>", self._entry_arrow_down); self.entry.bind("<Left>", self._entry_arrow_left); self.entry.bind("<Right>", self._entry_arrow_right)
         self._init_smart_completion(); self.entry.bind('<Return>', self.process_command); self.entry.config(state="disabled")
@@ -2807,7 +2809,10 @@ class EnhancedGameApp:
         if room["items"]: self.append_colored("🎒 You see: ", "success"); self.append_colored(", ".join(room["items"]) + "\n")
         elif room.get("looted"): self.append_colored(f"🫳 Nothing left here. You already grabbed {self._np(room['looted'][-1])} from this spot.\n", "lore")
         if room["npc"]: self.append_colored(f"👤 {room['npc'].name} is here.\n", "achievement" if room['npc'].is_subquest else "quest")
-        if room["monster"]: self.append_colored(f"⚔️ DANGER: {room['monster'].name} blocks your path! ", "combat"); self.append_colored(f"(HP: {room['monster'].hp}/{room['monster'].max_hp})\n", "combat")
+        if room["monster"]:
+            if getattr(room["monster"], "hidden", False):
+                self.append_colored("\n*** SURPRISE ATTACK!!! ***\n", "surprise")
+            self.append_colored(f"⚔️ DANGER: {room['monster'].name} blocks your path! ", "combat"); self.append_colored(f"(HP: {room['monster'].hp}/{room['monster'].max_hp})\n", "combat")
         if room.get("monster") is None and room.get("last_defeated_monster"): self.append_colored(f"💀 You see the remains of a {room['last_defeated_monster']} here.\n", "lore")
         exits = [];
         if y > 1: exits.append("north")
@@ -3226,6 +3231,7 @@ class EnhancedGameApp:
                 p.meeseeks_attack_doubled = False  # Always reset it. Every time.
                 if random.random() < 0.7:
                     self.append_colored("💨 You successfully flee from combat!\n", "success")
+                    fled_monster = room.get("monster")
                     last_x, last_y = p.last_room
                     if abs(last_x - x) + abs(last_y - y) == 1 and (1 <= last_x <= self.width) and (1 <= last_y <= self.height): 
                         p.x, p.y = last_x, last_y; self.print_room(); self.update_enhanced_map()
@@ -3233,6 +3239,16 @@ class EnhancedGameApp:
                         possible_moves = [(dx, dy) for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)] if 1 <= x + dx <= self.width and 1 <= y + dy <= self.height]
                         if possible_moves: 
                             dx, dy = random.choice(possible_moves); p.x, p.y = x + dx, y + dy; self.print_room(); self.update_enhanced_map()
+                    # A hidden ambusher doesn't sit politely where you left it. When you slip away it skulks
+                    # off to some OTHER empty room you've already been through, never the one you fled into.
+                    if fled_monster is not None and getattr(fled_monster, "hidden", False):
+                        room["monster"] = None
+                        spots = self._hidden_candidate_rooms(exclude={(x, y)})  # your new tile is auto-excluded
+                        if spots:
+                            self.world[random.choice(spots)]["monster"] = fled_monster
+                        else:
+                            room["monster"] = fled_monster  # Nowhere legal to skulk off to, so it stays put this once.
+                        self.update_enhanced_map(); self.update_minimap()
                 else: self.append_colored("💥 Failed to flee! The enemy attacks!\n", "combat"); self.handle_combat(room["monster"])
             else: self.append_colored("❌ Nothing to flee from.\n", "error"); self.root.bell()
             return
@@ -3678,6 +3694,25 @@ class EnhancedGameApp:
         p.hidden_pool = list(HIDDEN_ENEMIES); random.shuffle(p.hidden_pool)
         p.max_total_kills = self._compute_max_total_kills(placed, len(HIDDEN_ENEMIES))
 
+    def _hidden_candidate_rooms(self, exclude=()):
+        # Every legal landing spot for a hidden enemy: a room you've already revealed, totally empty, out
+        # of the hub safety bubble, and not crowding another monster. Same rules I use at world-gen. The
+        # player's current tile and the hub are always off-limits; pass extra rooms in 'exclude' to skip.
+        p = self.player
+        SAFE_RADIUS = 2
+        def m_dist(a, b): return abs(a[0] - b[0]) + abs(a[1] - b[1])
+        placed_positions = [pos for pos, rm in self.world.items() if rm.get("monster")]
+        banned = set(exclude); banned.add((1, 1)); banned.add((p.x, p.y))
+        candidates = []
+        for pos, rm in self.world.items():
+            if pos in banned: continue                          # hub, your tile, or anything I was told to skip
+            if not rm.get("visited"): continue                  # only on rooms you've actually revealed
+            if rm.get("npc") or rm.get("monster") or rm.get("items") or rm.get("motif") is not None: continue  # fully empty only
+            if m_dist(pos, (1, 1)) <= SAFE_RADIUS: continue      # respect the home safe zone
+            if any(m_dist(pos, mp) < 2 for mp in placed_positions): continue  # same spacing as gen, no clumping
+            candidates.append(pos)
+        return candidates
+
     def _spawn_hidden_enemy(self):
         # Drop ONE hidden ambusher onto an already-revealed, totally empty room, using the same rules I
         # use at world-gen: stay out of the hub's safety bubble and never crowd another monster. No
@@ -3686,18 +3721,7 @@ class EnhancedGameApp:
         p = self.player
         pool = getattr(p, "hidden_pool", None)
         if not pool: return False  # Bag's empty. I never repeat a creature, so that's that.
-        SAFE_RADIUS = 2
-        def m_dist(a, b): return abs(a[0] - b[0]) + abs(a[1] - b[1])
-        placed_positions = [pos for pos, rm in self.world.items() if rm.get("monster")]
-        here = (p.x, p.y)
-        candidates = []
-        for pos, rm in self.world.items():
-            if not rm.get("visited"): continue                 # only on rooms you've actually revealed
-            if pos == (1, 1) or pos == here: continue           # not on the hub, not right where you stand
-            if rm.get("npc") or rm.get("monster") or rm.get("items") or rm.get("motif") is not None: continue  # fully empty only
-            if m_dist(pos, (1, 1)) <= SAFE_RADIUS: continue     # respect the home safe zone
-            if any(m_dist(pos, mp) < 2 for mp in placed_positions): continue  # same spacing as gen, no clumping
-            candidates.append(pos)
+        candidates = self._hidden_candidate_rooms()
         if not candidates: return False  # Nowhere legal that you've revealed yet. Skip it; the math still holds as a ceiling.
         pos = random.choice(candidates)
         name, base_hp, base_dmg, desc = pool.pop()

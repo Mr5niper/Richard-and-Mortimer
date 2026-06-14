@@ -1100,6 +1100,7 @@ class Player:
         self.last_room   = (1, 1)
         self.inventory   = []
         self.crafting_materials = []
+        self.shop_buyback = {}    # Stuff Morty pawned to Glexo. He'll sell it back at a markup, because regret has a price.
         self.quest_idx   = 0
         self.step_idx    = 0          # Index into MAIN_STEPS. Four steps per chapter. Count 'em, Morty.
         self.objective_shown = False  # I, Rick, lay out the grand objective exactly once. Listen the first time.
@@ -1654,13 +1655,35 @@ class EnhancedGameApp:
             self.append_colored("Glexo gestures to his wares. 'Best junk this side of the finite curve.'\n", "quest")
             for item, price in sorted(shop_inventory.items()):
                 self.append_colored(f"  - {item}: {price} Credits\n")
+            bb = getattr(self.player, "shop_buyback", None) or {}
+            if bb:
+                self.append_colored("Glexo jerks a thumb at a shelf of your old junk. 'Stuff you pawned. Want it back? It'll cost ya.'\n", "lore")
+                for item in sorted(bb):
+                    e = bb[item]; qty = f" x{e['qty']}" if e.get("qty", 1) > 1 else ""
+                    self.append_colored(f"  - {item}: {e['price']} Credits{qty}\n")
             self.append_colored(f"You have {self.player.federation_credits} Credits.\n", "success")
             return
         
         if command == "buy":
             if len(parts) < 2: self.append_colored("Glexo rolls his eyes. 'Buy what, genius? `buy <item>`.'\n", "error"); self.root.bell(); return
-            item_name = self._find_item_in_list(" ".join(parts[1:]), list(shop_inventory.keys()))
-            if not item_name: self.append_colored("'I ain't sellin' that. Check the list.'\n", "error"); self.root.bell(); return
+            query = " ".join(parts[1:])
+            item_name = self._find_item_in_list(query, list(shop_inventory.keys()))
+            bb = getattr(self.player, "shop_buyback", None) or {}
+            if not item_name:
+                # Not in regular stock. Maybe it's something Morty pawned and now wants back.
+                bb_name = self._find_item_in_list(query, list(bb.keys()))
+                if bb_name:
+                    price = bb[bb_name]["price"]
+                    if self.player.federation_credits < price: self.append_colored(f"'Buyin' your own junk back is {price} Credits. You got {self.player.federation_credits}. Math, kid.'\n", "error"); self.root.bell(); return
+                    self.player.federation_credits -= price
+                    dest = bb[bb_name].get("dest", "materials")
+                    (self.player.inventory if dest == "inventory" else self.player.crafting_materials).append(bb_name)
+                    bb[bb_name]["qty"] -= 1
+                    if bb[bb_name]["qty"] <= 0: del bb[bb_name]
+                    self.append_colored(f"You bought back {self._np(bb_name)} for {price} Credits. Glexo smirks.\n", "success")
+                    self.update_info_display(); self.root.bell()
+                    return
+                self.append_colored("'I ain't sellin' that. Check the list.'\n", "error"); self.root.bell(); return
             
             price = shop_inventory[item_name]
             if self.player.federation_credits < price: self.append_colored(f"'You think I'm running a charity? That's {price} Credits. You only got {self.player.federation_credits}. Get outta here.'\n", "error"); self.root.bell(); return
@@ -1690,11 +1713,19 @@ class EnhancedGameApp:
             if not item_to_sell: self.append_colored("'You don't have that, you idiot.'\n", "error"); self.root.bell(); return
             
             sell_price = shop_inventory.get(item_to_sell, 0) // 3 or 2
-            
-            if item_to_sell in self.player.inventory: self.player.inventory.remove(item_to_sell)
-            elif item_to_sell in self.player.crafting_materials: self.player.crafting_materials.remove(item_to_sell)
-                
+
+            if item_to_sell in self.player.inventory: self.player.inventory.remove(item_to_sell); dest = "inventory"
+            elif item_to_sell in self.player.crafting_materials: self.player.crafting_materials.remove(item_to_sell); dest = "materials"
+            else: dest = "materials"
+
             self.player.federation_credits += sell_price
+            # It lands on Glexo's used shelf. Buy-back costs a little more than he paid Morty, because of course it does.
+            if item_to_sell not in shop_inventory:
+                if getattr(self.player, "shop_buyback", None) is None: self.player.shop_buyback = {}
+                bb = self.player.shop_buyback
+                buyback_price = sell_price + max(1, sell_price // 2)
+                if item_to_sell in bb: bb[item_to_sell]["qty"] += 1; bb[item_to_sell]["price"] = buyback_price; bb[item_to_sell]["dest"] = dest
+                else: bb[item_to_sell] = {"price": buyback_price, "qty": 1, "dest": dest}
             self.append_colored(f"You sold {item_to_sell} for {sell_price} Credits. Glexo barely looks up.\n", "success")
             self.update_info_display(); self.root.bell()
             return
@@ -1930,7 +1961,7 @@ class EnhancedGameApp:
         if argi >= 2 and v not in ("portal_jump", "sense"):
             return []
         if v in ("get",): return sorted(set(room_items), key=lambda s: s.lower())
-        if v in ("buy",): return sorted(shop_inventory_keys, key=lambda s: s.lower())
+        if v in ("buy",): return sorted(set(shop_inventory_keys + list(getattr(p, "shop_buyback", None) or {})), key=lambda s: s.lower())
         if v in ("sell", "give"): return sorted(set(inv_items + p.crafting_materials), key=lambda s: s.lower())
         if v in ("use",):
             usable = ["Healing Serum", "Energy Cell"]; usable.extend(inv_items)
@@ -3934,6 +3965,8 @@ class EnhancedGameApp:
                 if _r in self.player.inventory: self.player.crafted_recipes.add(_r)
             if not hasattr(self.player, "true_ending_shown"):
                 self.player.true_ending_shown = False
+            if not hasattr(self.player, "shop_buyback") or self.player.shop_buyback is None:
+                self.player.shop_buyback = {}
             self.difficulty = data.get("difficulty", DifficultyLevel.NORMAL)
             self.width = data.get("width", 12); self.height = data.get("height", 12)
             self.total_lore_fragments_count = data.get("total_lore_fragments_count", 0)

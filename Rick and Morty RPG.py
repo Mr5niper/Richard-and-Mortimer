@@ -1823,7 +1823,7 @@ class EnhancedGameApp:
         # A 12 by 12 grid. 144 rooms. Do the math, I already did.
         self.width, self.height = 12, 12
         self.root = root
-        self.root.title("Rick and Morty - Multiverse Mayhem v1.4.0.0")
+        self.root.title("Rick and Morty - Multiverse Mayhem v1.3.0.3")
         # Windows slaps the Python interpreter's icon on the TASKBAR by default because it lumps
         # our window in under pythonw.exe. So I declare our own AppUserModelID, which makes Windows
         # treat this like its own real application and finally show OUR icon in the taskbar.
@@ -2544,22 +2544,7 @@ class EnhancedGameApp:
             self.player.inventory.append(recipe_name); self.player.items_crafted += 1; self.player.total_items_collected += 1
             self.player.crafted_recipes.add(recipe_name)
             self.append_colored(f"🔨 Successfully crafted: {recipe_name}!\n", "success"); self.append_colored(f"   Effect: {result['effect']}\n", "achievement")
-            if recipe_name == "Mega Seed Injector":
-                self.player.max_charge += 10; self.player.charge = self.player.max_charge; self.player.hp = max(1, self.player.hp - 5); self.player.mega_seeds_used += 1
-                self.append_colored("🧠 Mega Seed Injector boosts max charge by 10 but causes nausea (lose 5 HP)!\n", "achievement")
-                if not getattr(self.player, "mega_seed_injector_built", False):
-                    self.player.mega_seed_injector_built = True
-                    moved = 0
-                    while "Mega Seed" in self.player.crafting_materials:
-                        self.player.crafting_materials.remove("Mega Seed"); self.player.inventory.append("Mega Seed"); moved += 1
-                    if moved:
-                        self.append_colored(f"🌱 Injector online. Your {moved} leftover Mega Seed(s) are now usable items, moved to your inventory.\n", "success")
-                    else:
-                        self.append_colored("🌱 Injector online. Mega Seeds now count as usable items, not crafting parts, from here on.\n", "lore")
-            elif recipe_name == "Interdimensional Goggles":
-                for pos, rm in self.world.items():
-                    if rm.get("npc") or rm.get("monster") or rm.get("items") or rm.get("motif") is not None: rm["visited"] = True
-                self.append_colored("🌌 Interdimensional Goggles reveal every special room!\n", "achievement"); self.update_enhanced_map()
+            self._apply_post_craft_effects(recipe_name)
             self._recalc_passives(); self.update_info_display(); self.update_enhanced_map(); self.update_minimap(); check_achievements(self.player, self.world, self)
         tk.Button(self.crafting_popup, text="Craft Selected", width=18, command=craft_selected).pack(side=tk.BOTTOM, pady=(0, 8))
         def close_crafting(): self.crafting_popup.destroy(); self.crafting_popup = None; self.entry.focus_set()
@@ -3381,7 +3366,9 @@ class EnhancedGameApp:
                 if not consumed_materials and p.pclass == "Fabricator Drone": self.append_colored("⚙️ Fabricator Drone kicks in. Materials not consumed!\n", "success")
                 self.root.bell()
                 p.inventory.append(recipe_name); p.items_crafted += 1; p.total_items_collected += 1; p.crafted_recipes.add(recipe_name); self.append_colored(f"🔨 Successfully crafted: {recipe_name}!\n", "success")
-                self.append_colored(f"   Effect: {result['effect']}\n", "achievement"); self._recalc_passives(); self.update_info_display(); check_achievements(p, self.world, self)
+                self.append_colored(f"   Effect: {result['effect']}\n", "achievement")
+                self._apply_post_craft_effects(recipe_name)
+                self._recalc_passives(); self.update_info_display(); self.update_enhanced_map(); self.update_minimap(); check_achievements(p, self.world, self)
             else: self.append_colored("🔧 " + self._quip("cant_craft", recipe_name) + f" ({result})\n", "error"); self.root.bell(); return
             return
         elif command in ["help", "h", "?"]: self.show_enhanced_help(); return
@@ -3811,6 +3798,29 @@ class EnhancedGameApp:
         self.append_centered("--- THE END. NOW GO TOUCH SOME GRASS. ---\n", "banner")
         try: self.entry.config(state="disabled")
         except Exception: pass
+    def _apply_post_craft_effects(self, recipe_name):
+        # Special on-build effects, shared by the popup AND the typed `craft` command so the two can
+        # never drift apart again (which is exactly how the injector ended up half-built before).
+        # Building the Mega Seed Injector is itself one safe dose: it flips Mega Seeds into usable
+        # items, drags any you already had out of the crafting pile, and counts as using a seed.
+        p = self.player
+        if recipe_name == "Mega Seed Injector":
+            p.max_charge += 10; p.charge = p.max_charge; p.hp = max(1, p.hp - 5); p.mega_seeds_used += 1
+            self.append_colored("🧠 Mega Seed Injector boosts max charge by 10 but causes nausea (lose 5 HP)!\n", "achievement")
+            if not getattr(p, "mega_seed_injector_built", False):
+                p.mega_seed_injector_built = True
+                moved = 0
+                while "Mega Seed" in p.crafting_materials:
+                    p.crafting_materials.remove("Mega Seed"); p.inventory.append("Mega Seed"); moved += 1
+                if moved:
+                    self.append_colored(f"🌱 Injector online. Your {moved} leftover Mega Seed(s) are now usable items, moved to your inventory.\n", "success")
+                else:
+                    self.append_colored("🌱 Injector online. Mega Seeds now count as usable items, not crafting parts, from here on.\n", "lore")
+        elif recipe_name == "Interdimensional Goggles":
+            for pos, rm in self.world.items():
+                if rm.get("npc") or rm.get("monster") or rm.get("items") or rm.get("motif") is not None: rm["visited"] = True
+            self.append_colored("🌌 Interdimensional Goggles reveal every special room!\n", "achievement"); self.update_enhanced_map()
+
     def use_item(self, item_name, room):
         p = self.player
         if item_name not in p.inventory: self.append_colored(f"❌ You don't have {self._np(item_name)} in your inventory.\n", "error"); self.root.bell(); return
@@ -3825,9 +3835,9 @@ class EnhancedGameApp:
                 if "Mega Seed" in p.inventory:
                     p.inventory.remove("Mega Seed"); p.mega_seeds_used += 1; mana_boost = 10; hp_loss = 5
                     p.max_charge = min(p.max_charge + mana_boost, 999); p.charge = min(p.charge + mana_boost, p.max_charge); p.hp = max(1, p.hp - hp_loss)
-                    self.append_colored(f"🧠 The injector delivers the Mega Seed's power! Max Charge +{mana_boost}, lose {hp_loss} HP.\n", "success")
-                    p.inventory.remove(item_name); check_achievements(p, self.world, self)
-                else: self.append_colored("❌ You need a 'Mega Seed' to use the 'Mega Seed Injector'.\n", "error"); self.root.bell(); return
+                    self.append_colored(f"🧠 The injector safely administers a Mega Seed! Max Charge +{mana_boost}, lose {hp_loss} HP.\n", "success")
+                    check_achievements(p, self.world, self)  # The injector is a reusable device; it stays in your bag.
+                else: self.append_colored("🌱 The injector's ready, but you've got no Mega Seed loaded. Find or buy one, then use it again.\n", "error"); self.root.bell(); return
             elif item_name == "Schmeckle Converter":
                 if p.federation_credits >= 5:
                     p.federation_credits -= 5; available_materials = [mat for recipe_data in CRAFTING_RECIPES.values() for mat in recipe_data["materials"]]
@@ -4103,8 +4113,16 @@ class EnhancedGameApp:
             self.player = data["player"]; self.world = data["world"]; self._sanitize_world()
             # Old save from before I added the seed toggle. If the Injector's already built, the
             # seeds count as usable now, so flip the switch and drag the loose ones over. Cleaning up after past me.
+            # Repair the Mega Seed Injector state. If the injector's in the bag but the switch never
+            # flipped (older saves, or one built via the typed `craft` command back when that path
+            # skipped the special handling), turn it on now. Building it IS one safe dose, so it counts
+            # as a used seed, and any seeds stranded in the crafting pile become usable items. The
+            # achievement re-check at the end of load then hands over Mega Seed Master.
             if not hasattr(self.player, "mega_seed_injector_built"):
-                self.player.mega_seed_injector_built = ("Mega Seed Injector" in self.player.inventory)
+                self.player.mega_seed_injector_built = False
+            if "Mega Seed Injector" in self.player.inventory and not self.player.mega_seed_injector_built:
+                self.player.mega_seed_injector_built = True
+                self.player.mega_seeds_used = max(getattr(self.player, "mega_seeds_used", 0), 1)
             if self.player.mega_seed_injector_built:
                 while "Mega Seed" in self.player.crafting_materials:
                     self.player.crafting_materials.remove("Mega Seed"); self.player.inventory.append("Mega Seed")
@@ -4140,6 +4158,9 @@ class EnhancedGameApp:
             saved_unlocked = set(data.get("unlocked_achievements", []))
             for a in ACHIEVEMENTS:
                 a.unlocked = a.name in saved_unlocked
+            # Re-run the check after all the repairs above, so anything you genuinely earned but that
+            # never got flagged (like Mega Seed Master once the injector's fixed) unlocks right now.
+            check_achievements(self.player, self.world, self)
             self._vpad_lines = 0
             self.set_button_states(menu=False)
             self._close_all_popups()

@@ -1125,6 +1125,8 @@ class Player:
         self.monsters_defeated      = 0
         self.monsters_killed        = 0
         self.items_crafted          = 0
+        self.crafted_recipes        = set()  # Unique recipe names actually crafted; used for the 100% true ending.
+        self.true_ending_shown      = False  # Flips once when the player hits full 100% completion.
         self.motif_puzzles_solved   = 0
         self.lore_fragments         = []
         self.total_items_collected  = 0
@@ -1548,6 +1550,8 @@ def check_achievements(player, world, app_instance=None):
             # sweep it under the rug and pretend it's fine. Loud and non-fatal.
             import sys as _sys
             print(f"[achievement check] '{ach.name}' condition failed: {_ach_err}", file=_sys.stderr)
+    if app_instance is not None and hasattr(app_instance, "_maybe_true_ending"):
+        app_instance._maybe_true_ending()
     return unlocked
 def craft_item(recipe_name, player_materials, player_class=None):
     if recipe_name not in CRAFTING_RECIPES: return False, "Unknown recipe", []
@@ -2455,7 +2459,7 @@ class EnhancedGameApp:
             if not consumed_materials and self.player.pclass == "Fabricator Drone": self.append_colored("⚙️ Fabricator Drone kicks in. Materials not consumed!\n", "success")
             self.root.bell()
             self.player.inventory.append(recipe_name); self.player.items_crafted += 1; self.player.total_items_collected += 1
-            self.grant_xp(5, "item crafted")
+            self.player.crafted_recipes.add(recipe_name)
             self.append_colored(f"🔨 Successfully crafted: {recipe_name}!\n", "success"); self.append_colored(f"   Effect: {result['effect']}\n", "achievement")
             if recipe_name == "Mega Seed Injector":
                 self.player.max_charge += 10; self.player.charge = self.player.max_charge; self.player.hp = max(1, self.player.hp - 5); self.player.mega_seeds_used += 1
@@ -3053,7 +3057,7 @@ class EnhancedGameApp:
             for itm in CRAFTING_RECIPES:
                 if itm not in p.inventory:
                     p.inventory.append(itm); crafted_now.append(itm)
-                    p.items_crafted += 1; p.total_items_collected += 1
+                    p.items_crafted += 1; p.total_items_collected += 1; p.crafted_recipes.add(itm)
             if "Mega Seed Injector" in p.inventory and not getattr(p, "mega_seed_injector_built", False):
                 p.mega_seed_injector_built = True
                 while "Mega Seed" in p.crafting_materials:
@@ -3258,7 +3262,7 @@ class EnhancedGameApp:
             if success:
                 if not consumed_materials and p.pclass == "Fabricator Drone": self.append_colored("⚙️ Fabricator Drone kicks in. Materials not consumed!\n", "success")
                 self.root.bell()
-                p.inventory.append(recipe_name); p.items_crafted += 1; p.total_items_collected += 1; self.append_colored(f"🔨 Successfully crafted: {recipe_name}!\n", "success")
+                p.inventory.append(recipe_name); p.items_crafted += 1; p.total_items_collected += 1; p.crafted_recipes.add(recipe_name); self.append_colored(f"🔨 Successfully crafted: {recipe_name}!\n", "success")
                 self.append_colored(f"   Effect: {result['effect']}\n", "achievement"); self._recalc_passives(); self.update_info_display(); check_achievements(p, self.world, self)
             else: self.append_colored("🔧 " + self._quip("cant_craft", recipe_name) + f" ({result})\n", "error"); self.root.bell(); return
             return
@@ -3469,10 +3473,11 @@ class EnhancedGameApp:
         p = self.player
         self.append_colored(self._q(ch["rick_install"]) + "\n", "achievement")
         p.motif_puzzles_solved += 1; self.grant_xp(50, "OMNI-CORE part installed")
-        self._advance_step(); check_achievements(p, self.world, self)
+        self._advance_step()
         if self._cur_step() is None:
             self.handle_game_completion()
         else:
+            check_achievements(p, self.world, self)
             self.append_colored(f'Rick: "One part down. Talk to me when you\'re ready for the next, {self.player.name}."\n', "lore")
         self.update_info_display()
 
@@ -3504,15 +3509,19 @@ class EnhancedGameApp:
             else: charge_gain = random.randint(2, 5); p.charge = min(p.max_charge, p.charge + charge_gain); self.append_colored(f"🤝 Your smooth talk restores {charge_gain} Charge from {name}!\n", "success")
             self.update_info_display()
     def handle_game_completion(self):
+        # The OMNI-CORE is finished: this is the end of the MAIN QUEST, not necessarily the game.
+        # If there's still 100% left (achievements, side quests, every gadget), we celebrate the
+        # core, show the run stats, and let the player keep going. The real, final ending only
+        # fires once EVERYTHING is done, handled by _maybe_true_ending / _true_ending.
         self.append_colored("\n" + "="*60 + "\n", "achievement")
         self.append_centered("THE OMNI-CORE IS COMPLETE\n", "banner")
         self.append_colored("="*60 + "\n", "achievement")
         self.append_colored(
-            "Rick snaps the Singularity Heart into place. The OMNI-CORE thrums - five stolen "
+            "Rick snaps the Singularity Heart into place. The OMNI-CORE thrums, five stolen "
             "wonders humming as one. No tiny civilization to unionize, no Zeep to one-up him. "
             "Strike-proof, guilt-free, infinite power.\n", "lore")
         self.append_colored(
-            f"'We did it, {self.player.name},' Rick burps. 'Real talk - you fetched, you fought, you didn't die. "
+            f"'We did it, {self.player.name},' Rick burps. 'Real talk, you fetched, you fought, you didn't die. "
             "Color me moderately impressed.'\n", "quest")
         self.append_colored(
             "He carries the OMNI-CORE past the dead Microverse Battery... and plugs it straight into "
@@ -3520,21 +3529,100 @@ class EnhancedGameApp:
         self.append_colored(
             "'...Rick, that's a UNIVERSE of infinite power. For your CABLE?'\n", "lore")
         self.append_colored(
-            f"'I'm never paying that bill again, {self.player.name}. Priorities. Now get schwifty - there's a "
+            f"'I'm never paying that bill again, {self.player.name}. Priorities. Now get schwifty, there's a "
             "season finale on in nine thousand dimensions at once.'\n\n", "lore")
         self.append_colored(
             "Across the multiverse, President Morty notes the new power signature, smiles, and files "
-            "it away for later. Roll credits.\n", "success")
-        self.append_colored("\n📊 FINAL STATISTICS:\n", "quest")
-        self.append_colored(f"   Moves taken: {self.player.moves_taken}\n")
-        self.append_colored(f"   Enemies defeated: {self.player.monsters_defeated}\n")
-        self.append_colored(f"   Items crafted: {self.player.items_crafted}\n")
-        self.append_colored(f"   Lore fragments: {len(self.player.lore_fragments)}\n")
-        self.append_colored(f"   Deaths: {self.player.deaths}\n")
-        self.append_colored(f"   Difficulty: {self.player.difficulty.value.title()}\n")
+            "it away for later.\n", "success")
+        # Unlock the end-game achievements now, but hold the true-ending trigger until we've decided.
+        self._suppress_true_ending = True
         check_achievements(self.player, self.world, self)
-        self.append_centered("\n--- THANKS FOR PLAYING! ---\n", "banner")
-        self.entry.config(state="disabled")
+        self._suppress_true_ending = False
+        if self._is_fully_complete():
+            # Beating the main quest was the very last thing left. Straight to the real ending.
+            self._true_ending(); return
+        # Still more to do: show the run so far and point them at 100%. Input stays ENABLED.
+        self._show_run_stats("📊 MAIN QUEST STATISTICS:")
+        left = self._completion_remaining()
+        self.append_colored("\n" + "="*60 + "\n", "quest")
+        self.append_colored(
+            f"The main story's done, {self.player.name}, but you haven't squeezed this multiverse dry yet. "
+            "Rick wanders off to enjoy his cable. You're free to keep poking around.\n", "lore")
+        self.append_colored("Still on the board before you've truly 100%'d it:\n", "quest")
+        self.append_colored(f"   Achievements:    {left['ach_done']}/{left['ach_total']}\n")
+        self.append_colored(f"   Side quests:     {left['sq_done']}/{left['sq_total']}\n")
+        self.append_colored(f"   Intel fragments: {left['intel_done']}/{left['intel_total']}\n")
+        self.append_colored(f"   Gadgets crafted: {left['craft_done']}/{left['craft_total']}\n")
+        self.append_colored(
+            "Finish every last one and Rick might just say something he'll regret. Keep going.\n", "success")
+        self.update_info_display()
+
+    def _show_run_stats(self, header):
+        p = self.player
+        self.append_colored("\n" + header + "\n", "quest")
+        self.append_colored(f"   Moves taken: {p.moves_taken}\n")
+        self.append_colored(f"   Enemies defeated: {p.monsters_defeated}\n")
+        self.append_colored(f"   Items crafted: {p.items_crafted}\n")
+        self.append_colored(f"   Lore fragments: {len(p.lore_fragments)}\n")
+        self.append_colored(f"   Difficulty: {p.difficulty.value.title()}\n")
+
+    def _completion_remaining(self):
+        p = self.player
+        return {
+            "ach_done": sum(1 for a in ACHIEVEMENTS if a.unlocked), "ach_total": len(ACHIEVEMENTS),
+            "sq_done": len(p.subquest_ack), "sq_total": len(EXTENDED_SUBQUESTS),
+            "craft_done": len(set(CRAFTING_RECIPES) & getattr(p, "crafted_recipes", set())), "craft_total": len(CRAFTING_RECIPES),
+            "intel_done": len(p.lore_fragments), "intel_total": getattr(self, "total_lore_fragments_count", 0),
+        }
+
+    def _is_fully_complete(self):
+        p = self.player
+        # The journal's own progress categories count toward 100%, alongside achievements + crafts.
+        if p.quest_idx < len(EXTENDED_QUESTS): return False                          # journal: Main Quests
+        if len(p.subquest_ack) < len(EXTENDED_SUBQUESTS): return False                # journal: Side Quests
+        if len(p.lore_fragments) < getattr(self, "total_lore_fragments_count", 0): return False  # journal: Intel
+        if not all(a.unlocked for a in ACHIEVEMENTS): return False                    # all achievements
+        if not set(CRAFTING_RECIPES).issubset(getattr(p, "crafted_recipes", set())): return False  # every gadget
+        return True
+
+    def _maybe_true_ending(self):
+        # Called from check_achievements after most actions. Fires the real ending exactly once,
+        # the moment the player finishes the LAST remaining thing in a 100% run.
+        if getattr(self, "_suppress_true_ending", False): return
+        p = self.player
+        if getattr(p, "true_ending_shown", False): return
+        if not self._is_fully_complete(): return
+        p.true_ending_shown = True
+        self._true_ending()
+
+    def _true_ending(self):
+        p = self.player
+        p.true_ending_shown = True
+        self.append_colored("\n" + "="*60 + "\n", "achievement")
+        self.append_centered("100%  -  NOTHING LEFT UNDONE\n", "banner")
+        self.append_colored("="*60 + "\n", "achievement")
+        self.append_colored(
+            f"That's it, {p.name}. Every part, every quest, every scrap of intel, every gadget on the "
+            "bench, every favor owed across the whole multiverse. The board is empty. There is nothing "
+            "left to fetch.\n", "lore")
+        self.append_colored(
+            "Rick sets the flask down. For once he doesn't burp, doesn't deflect, doesn't change the "
+            "subject. He just looks at you.\n", "lore")
+        self.append_colored(
+            f"'...You actually did everything. Every dumb little errand, every side thing nobody made you "
+            f"finish. Most Mortys tap out after the main quest.' He almost smiles. 'You're a good Morty, "
+            f"{p.name}. The good one.'\n", "quest")
+        self.append_colored(
+            "He musses your hair, which is about as much affection as Rick can manage without a portal gun "
+            "in the other hand. *buuurp* 'Don't let it go to your head.'\n\n", "lore")
+        self._show_run_stats("📊 FINAL STATISTICS:")
+        self.append_colored(f"   Achievements: {len(ACHIEVEMENTS)}/{len(ACHIEVEMENTS)}\n")
+        self.append_colored(f"   Side quests: {len(EXTENDED_SUBQUESTS)}/{len(EXTENDED_SUBQUESTS)}\n")
+        self.append_colored(f"   Gadgets crafted: {len(CRAFTING_RECIPES)}/{len(CRAFTING_RECIPES)}\n\n")
+        self.append_centered("YOU 100%'D THE MULTIVERSE, MORTY.\n", "banner")
+        self.append_centered("--- THE END. NOW GO TOUCH SOME GRASS. ---\n", "banner")
+        try: self.entry.config(state="disabled")
+        except Exception: pass
     def use_item(self, item_name, room):
         p = self.player
         if item_name not in p.inventory: self.append_colored(f"❌ You don't have {self._np(item_name)} in your inventory.\n", "error"); self.root.bell(); return
@@ -3834,6 +3922,14 @@ class EnhancedGameApp:
             if self.player.mega_seed_injector_built:
                 while "Mega Seed" in self.player.crafting_materials:
                     self.player.crafting_materials.remove("Mega Seed"); self.player.inventory.append("Mega Seed")
+            # Backfill the 100%-completion tracking for older saves. Seed crafted recipes from
+            # any gadgets still on hand so a save that already built things isn't penalized.
+            if not hasattr(self.player, "crafted_recipes") or self.player.crafted_recipes is None:
+                self.player.crafted_recipes = set()
+            for _r in CRAFTING_RECIPES:
+                if _r in self.player.inventory: self.player.crafted_recipes.add(_r)
+            if not hasattr(self.player, "true_ending_shown"):
+                self.player.true_ending_shown = False
             self.difficulty = data.get("difficulty", DifficultyLevel.NORMAL)
             self.width = data.get("width", 12); self.height = data.get("height", 12)
             self.total_lore_fragments_count = data.get("total_lore_fragments_count", 0)

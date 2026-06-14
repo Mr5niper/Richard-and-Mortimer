@@ -200,10 +200,9 @@ EXTENDED_QUESTS = [
 ]
 
 NPC_PREQUEST_CHAT = {
-    # Shown when Morty talks to a main-quest NPC before Rick has sent him their way.
-    # 'intro' runs once, one line per 'talk', in order; together the five characters'
-    # intros tell one connected story about Rick and the OMNI-CORE from the outside.
-    # After the intro, 'talk' cycles the three 'endings' at random, no back-to-back repeat.
+    # What everybody says when Morty bugs them before I've sent him their way. The intro
+    # runs once, a line per talk, and the five of them together tell my whole story from
+    # the cheap seats. After that it cycles three "go see Rick" brush-offs at random. No repeats.
     "Zeep Xanflorp": {
         "intro": [
             "Zeep barely looks up from a glowing schematic. \"A Morty. So Rick's reduced to subcontracting his legwork to a child. The empire crumbles.\"",
@@ -276,14 +275,14 @@ NPC_PREQUEST_CHAT = {
     },
 }
 
-# Staged talk-states for the main quest. Each bucket: 'story' (3 beats, shown once,
-# one per talk) then 'cycle' (3 reminders that rotate at random). Chapter characters
-# are keyed by name; Rick's lines use {gift}/{character}/{item} filled per chapter.
+# Everything the main-quest crew says, per stage. Three story beats once, a line per talk,
+# then three reminders on random rotation. They go by name; my own lines use
+# {gift}/{character}/{item} so I'm not retyping the same junk five times. I'm efficient.
 STORY_CHAT = {
     "Zeep Xanflorp": {
         "arrive": {
             "story": [
-                "Zeep takes the {gift} between two fingers like it's diseased. \"A peace accord. From Rick. He's apologizing in document form because he can't form the words with his mouth.\"",
+                "Zeep eyes the {gift} in your hands like it's diseased. \"A peace accord. From Rick. He's apologizing in document form because he can't form the words with his mouth.\"",
                 "\"You understand what this is, errand boy? Rick needs something only I can make, and he'd sign a treaty before admitting that out loud.\"",
                 "\"Fine. Hand it over properly and I'll consider lowering myself to help. Slowly. While judging him.\"",
             ],
@@ -333,7 +332,7 @@ STORY_CHAT = {
     "Birdperson": {
         "arrive": {
             "story": [
-                "Birdperson accepts the {gift} with a slow nod. \"A tune-up kit. Rick remembers I am part machine now. He remembers when it is useful to him.\"",
+                "Birdperson's gaze settles on the {gift} you're holding. \"A tune-up kit. Rick remembers I am part machine now. He remembers when it is useful to him.\"",
                 "\"We were soldiers together, {pc}. I have learned that Rick's gifts always arrive attached to a request.\"",
                 "\"Place it in my hands properly. I will not refuse an old comrade. But I will not pretend I do not see the shape of this.\"",
             ],
@@ -383,7 +382,7 @@ STORY_CHAT = {
     "Squanchy": {
         "arrive": {
             "story": [
-                "Squanchy snatches the {gift} and sniffs it deeply, eyes rolling back. \"Ohhh, the GOOD Eyehole wine. Rick remembered. The magnificent squanch.\"",
+                "Squanchy's nose twitches at the {gift} in your hands, eyes already rolling back. \"Ohhh, the GOOD Eyehole wine. Rick remembered. The magnificent squanch.\"",
                 "\"You don't bring a squanch this bottle unless you need somethin' squanched bad, baby. So let's hear it. After a sip.\"",
                 "\"Hand it over proper first, little Morty. A squanch's hospitality has STANDARDS.\"",
             ],
@@ -483,7 +482,7 @@ STORY_CHAT = {
     "President Morty": {
         "arrive": {
             "story": [
-                "President Morty accepts the {gift} without looking at it. \"An encrypted data-stick. Rick thinks he's sending me a message. He's sending me exactly what I asked him to, through you.\"",
+                "President Morty barely glances at the {gift} in your hand. \"An encrypted data-stick. Rick thinks he's sending me a message. He's sending me exactly what I asked him to, through you.\"",
                 "\"It's almost sweet, watching him believe he's running this. Sit. Or don't. You'll do what comes next either way.\"",
                 "\"Give me the {gift}, me. Let's keep the wheels turning.\"",
             ],
@@ -595,9 +594,9 @@ RICK_CHAT = {
     },
 }
 
-# Staged talk-states for side-quest NPCs. Same model: 'story' (3 beats, once) then
-# 'cycle' (3 rotating reminders). For the 'need' bucket the key_hint is appended by
-# the handler only during the cycle phase, never during the story beats.
+# Same setup for the side-quest crowd. Three story beats once, then three rotating
+# reminders. For the 'need' state I staple the hint on only after the story's done,
+# never during it. Let 'em squirm through three lines first, Morty.
 SIDEQUEST_CHAT = {
     "Jerry Smith": {
         "need": {
@@ -791,8 +790,8 @@ SIDEQUEST_CHAT = {
     },
 }
 
-# Glexo's greeting on the staged engine: three story beats (once) then cycling
-# shop nudges that still surface the list/buy/sell commands.
+# Glexo the pawn dealer, same engine: three story beats once, then nudges that keep
+# reminding Morty he can list, buy, and sell. The four-eyed weirdo grows on you.
 SHOP_CHAT = {
     "Glexo Slimslom": {
         "talk": {
@@ -1125,8 +1124,8 @@ class Player:
         self.monsters_defeated      = 0
         self.monsters_killed        = 0
         self.items_crafted          = 0
-        self.crafted_recipes        = set()  # Unique recipe names actually crafted; used for the 100% true ending.
-        self.true_ending_shown      = False  # Flips once when the player hits full 100% completion.
+        self.crafted_recipes        = set()  # Every gadget Morty's actually built. I count these for the real ending. No faking it.
+        self.true_ending_shown      = False  # Trips once Morty 100 percents everything. Then, and only then, am I impressed.
         self.motif_puzzles_solved   = 0
         self.lore_fragments         = []
         self.total_items_collected  = 0
@@ -1137,11 +1136,11 @@ class Player:
         self.cromulon_defeated_count = 0
         self.plumbuses_collected    = 0
         self.mega_seeds_used        = 0
-        self.mega_seed_injector_built = False  # Flips True once the Injector is built; after that, Mega Seeds are usable items, not crafting stock.
-        self.npc_chat_progress = {}  # name -> how far through that NPC's pre-quest intro Morty has talked.
-        self.npc_chat_last_end = {}  # name -> last "go see Rick" ending shown, so it doesn't repeat back-to-back.
-        self.chat_stage = {}      # "name:bucket" -> how far through that talk-state's story beats Morty has gotten.
-        self.chat_lastcycle = {}  # "name:bucket" -> last cycling line shown for that state, to avoid back-to-back repeats.
+        self.mega_seed_injector_built = False  # Flips on once I build the Injector. After that a Mega Seed's a usable item, not crafting junk.
+        self.npc_chat_progress = {}  # How far I've let each NPC ramble at Morty before I sent him their way.
+        self.npc_chat_last_end = {}  # Last brush-off each NPC used, so they quit repeating themselves like broken toys.
+        self.chat_stage = {}      # How far Morty's gotten through each character's spiel. Not telling it to him twice.
+        self.chat_lastcycle = {}  # Last cycling line per state so nobody repeats back to back. You're welcome.
         self.xp_bonus_percent       = 0
         self.current_combat_turn    = 0
         self.meeseeks_attack_doubled = False
@@ -3408,8 +3407,8 @@ class EnhancedGameApp:
                 self._staged_chat(f"Rick:rick_noitem:{ci}", RICK_CHAT["rick_noitem"], repl=repl)
 
     def _staged_line(self, key, story, cycle):
-        # Returns the next line for a talk-state: walk 'story' once (one per talk), then
-        # cycle 'cycle' at random with no back-to-back repeat. Progress saved per key.
+        # Hands back the next line of a conversation: the story beats once, a line per talk,
+        # then I cycle the filler at random so nobody repeats themselves. Saved per key. Obviously.
         p = self.player
         if getattr(p, "chat_stage", None) is None: p.chat_stage = {}
         if getattr(p, "chat_lastcycle", None) is None: p.chat_lastcycle = {}
@@ -3428,9 +3427,9 @@ class EnhancedGameApp:
         self.append_colored(line.replace("{pc}", self.player.name) + "\n", tag)
 
     def _prequest_chat(self, npc):
-        # Talked to a main-quest NPC before Rick sent us here. Walk their personal intro
-        # once (one line per talk), then cycle their three "go see Rick" endings at random,
-        # never repeating the same ending twice in a row.
+        # Morty walked up to somebody before I sent him. They run their bit once, a line per
+        # talk, then cycle three different "go bug Rick" brush-offs at random. Never the same one
+        # twice in a row, because I'm not a hack.
         p = self.player
         data = NPC_PREQUEST_CHAT.get(npc.name)
         if not data:
@@ -3511,10 +3510,9 @@ class EnhancedGameApp:
             else: charge_gain = random.randint(2, 5); p.charge = min(p.max_charge, p.charge + charge_gain); self.append_colored(f"🤝 Your smooth talk restores {charge_gain} Charge from {name}!\n", "success")
             self.update_info_display()
     def handle_game_completion(self):
-        # The OMNI-CORE is finished: this is the end of the MAIN QUEST, not necessarily the game.
-        # If there's still 100% left (achievements, side quests, every gadget), we celebrate the
-        # core, show the run stats, and let the player keep going. The real, final ending only
-        # fires once EVERYTHING is done, handled by _maybe_true_ending / _true_ending.
+        # OMNI-CORE's built, so the STORY's done, but maybe not the game. If Morty's still got
+        # achievements, side quests, or gadgets hanging, I toss him the stats and let him keep
+        # going. The real ending only fires once he's done EVERYTHING. See _maybe_true_ending.
         self.append_colored("\n" + "="*60 + "\n", "achievement")
         self.append_centered("THE OMNI-CORE IS COMPLETE\n", "banner")
         self.append_colored("="*60 + "\n", "achievement")
@@ -3536,14 +3534,14 @@ class EnhancedGameApp:
         self.append_colored(
             "Across the multiverse, President Morty notes the new power signature, smiles, and files "
             "it away for later.\n", "success")
-        # Unlock the end-game achievements now, but hold the true-ending trigger until we've decided.
+        # Light up the end-game achievements now, but I'm holding the real ending till I decide.
         self._suppress_true_ending = True
         check_achievements(self.player, self.world, self)
         self._suppress_true_ending = False
         if self._is_fully_complete():
-            # Beating the main quest was the very last thing left. Straight to the real ending.
+            # He saved the main quest for dead last? Fine. Straight to the real ending with him.
             self._true_ending(); return
-        # Still more to do: show the run so far and point them at 100%. Input stays ENABLED.
+        # Still got stuff to do. Show the run so far, point him at 100, leave the keyboard on.
         self._show_run_stats("📊 MAIN QUEST STATISTICS:")
         left = self._completion_remaining()
         self.append_colored("\n" + "="*60 + "\n", "quest")
@@ -3579,17 +3577,17 @@ class EnhancedGameApp:
 
     def _is_fully_complete(self):
         p = self.player
-        # The journal's own progress categories count toward 100%, alongside achievements + crafts.
-        if p.quest_idx < len(EXTENDED_QUESTS): return False                          # journal: Main Quests
-        if len(p.subquest_ack) < len(EXTENDED_SUBQUESTS): return False                # journal: Side Quests
-        if len(p.lore_fragments) < getattr(self, "total_lore_fragments_count", 0): return False  # journal: Intel
-        if not all(a.unlocked for a in ACHIEVEMENTS): return False                    # all achievements
-        if not set(CRAFTING_RECIPES).issubset(getattr(p, "crafted_recipes", set())): return False  # every gadget
+        # The journal's own tabs count toward 100, right next to achievements and crafts.
+        if p.quest_idx < len(EXTENDED_QUESTS): return False                          # journal: my main story
+        if len(p.subquest_ack) < len(EXTENDED_SUBQUESTS): return False                # journal: the side gigs
+        if len(p.lore_fragments) < getattr(self, "total_lore_fragments_count", 0): return False  # journal: every scrap of intel
+        if not all(a.unlocked for a in ACHIEVEMENTS): return False                    # all my achievements
+        if not set(CRAFTING_RECIPES).issubset(getattr(p, "crafted_recipes", set())): return False  # every gadget on the bench
         return True
 
     def _maybe_true_ending(self):
-        # Called from check_achievements after most actions. Fires the real ending exactly once,
-        # the moment the player finishes the LAST remaining thing in a 100% run.
+        # check_achievements pokes this after just about everything. The second Morty finishes
+        # the very last thing, the real ending fires. Once. I'm not doing an encore.
         if getattr(self, "_suppress_true_ending", False): return
         p = self.player
         if getattr(p, "true_ending_shown", False): return
@@ -3917,15 +3915,15 @@ class EnhancedGameApp:
         try:
             with open(path, 'rb') as f: data = pickle.load(f)
             self.player = data["player"]; self.world = data["world"]; self._sanitize_world()
-            # Backfill the Mega Seed toggle for saves made before it existed. If the Injector is
-            # already built, seeds are usable items now, so flip the flag and migrate any loose ones.
+            # Old save from before I added the seed toggle. If the Injector's already built, the
+            # seeds count as usable now, so flip the switch and drag the loose ones over. Cleaning up after past me.
             if not hasattr(self.player, "mega_seed_injector_built"):
                 self.player.mega_seed_injector_built = ("Mega Seed Injector" in self.player.inventory)
             if self.player.mega_seed_injector_built:
                 while "Mega Seed" in self.player.crafting_materials:
                     self.player.crafting_materials.remove("Mega Seed"); self.player.inventory.append("Mega Seed")
-            # Backfill the 100%-completion tracking for older saves. Seed crafted recipes from
-            # any gadgets still on hand so a save that already built things isn't penalized.
+            # Old save from before I tracked completion. Scrape the crafted gadgets off whatever
+            # Morty's still holding so he isn't punished for saving before I got organized.
             if not hasattr(self.player, "crafted_recipes") or self.player.crafted_recipes is None:
                 self.player.crafted_recipes = set()
             for _r in CRAFTING_RECIPES:
@@ -4128,11 +4126,10 @@ def show_legal_disclaimer(root):
 
 
 if __name__ == "__main__":
-    # Windows taskbar icon fix: declare our AppUserModelID and resolve the icon BEFORE the
-    # first window exists. Windows locks the taskbar button's icon the instant the first
-    # window appears, so doing this later (once the game builds) means run one shows the
-    # default Tk feather and only run two, served from cache, looks right. Setting it here,
-    # ahead of tk.Tk(), is what makes the real icon show on the very first launch.
+    # Windows taskbar icon, ugh. I gotta tell Windows who we are and load the icon BEFORE the
+    # first window pops, because Windows nails the taskbar icon down the instant a window shows.
+    # Do it late and run one gets the dumb default feather, run two looks fine off the cache.
+    # Doing it right here, ahead of tk.Tk(), is what makes my icon show on the very first launch.
     try:
         if sys.platform.startswith("win"):
             import ctypes

@@ -49,6 +49,7 @@ class Monster:
     is_boss: bool = False      # This flag is how I tag the big nasty bosses. Zeep, Cromulons, Fart, all the usual disappointments.
     stun_turns: int = 0
     weakened_next_attack: bool = False
+    hidden: bool = False       # A hidden ambusher I drop in after kills. No map marker, only ever coughs up Credits, never counts toward the achievement or 100 percent.
     def __post_init__(self):
         if self.loot is None:
             self.loot = []
@@ -950,11 +951,48 @@ MONSTERS = [
     ),
     Monster("Conspiracy Morty", 20, 20, 6, ["Conspiracy Theory", "Tin Foil Hat", "Healing Serum"], "A Morty who knows too much, always muttering about the truth behind the Ricks."),
 ]
+# ===== The hidden ambushers. =====
+# Brand-new nasties from around the multiverse, none of them already in MONSTERS above, all of them
+# the kind of thing that WOULD take a swing at me or Morty. I drop one of these in every time three
+# enemies die. They never carry quest junk or craft parts, only Credits, and they leave no mark on the
+# map. (name, base HP, base damage, the line you read right before it ruins your day.) HP sits in the
+# same 8 to 30 band as the regular crowd. There are way more here than the cascade can ever spawn in
+# one run, so you'll never see the same one twice in a game. Do the math, Morty, I did.
+HIDDEN_ENEMIES = [
+    ("Cronenberg Monster", 22, 7, "A lumpy, fleshy horror from a dimension I, uh, may have ruined. It's mad about it."),
+    ("Krombopulos Michael", 12, 8, "A cheerful little assassin with zero moral hangups. 'Ooh boy, here I go killing again!'"),
+    ("Gearhead", 17, 6, "A treacherous gear-faced merchant who'd absolutely stab you over a bad deal."),
+    ("Eyehole Man", 15, 5, "He shows up the instant you touch an eyehole. 'YOU DON'T EAT MY EYEHOLES!'"),
+    ("Abradolf Lincler", 27, 8, "My failed experiment in splicing Lincoln and Hitler. Morally conflicted, physically furious."),
+    ("Million Ants", 25, 7, "A sentient swarm in a tasteful suit. Technically a billion now, but who's counting."),
+    ("Heistotron", 23, 7, "A heist robot I built that won't stop planning heists, including a heist on you."),
+    ("Memory Parasite", 20, 6, "A bug that worms into your memories pretending it's an old friend. It is not."),
+    ("Pencilvester", 10, 4, "A pencil with a face and legs. Looks harmless. The parasites never are."),
+    ("Hamurai", 18, 6, "Half ham, half samurai, all parasite. Slices first, asks for backstory never."),
+    ("Photography Raptor", 16, 6, "A raptor that loves photography and lunging at faces. A real two-hobby guy."),
+    ("Sleepy Gary", 17, 5, "Seems like a great husband from a life you never had. That's the parasite talking."),
+    ("Zigerion Scammer", 14, 5, "A green con-artist from a simulation outfit, furious you keep seeing through the sims."),
+    ("Glootie", 12, 4, "Has 'DO NOT DEVELOP MY APP' tattooed on his forehead. Develops chaos instead."),
+    ("Glorzo", 14, 5, "An oil-loving alien from a soundstage planet. Very precious about its oil."),
+    ("Cronenberg Hobo", 19, 6, "Another mistake from that dimension. Drifting, twitching, and looking right at you."),
+    ("Purge Planet Native", 16, 6, "A villager who only gets one sanctioned murder night a year and is way behind quota."),
+    ("Hamster-in-Butt Brute", 24, 7, "A tiny rider from Hamster in Butt World, weirdly buff, weirdly aggressive."),
+    ("Antique Store Devil", 26, 8, "A smug shopkeep demon peddling cursed bargains. Refunds are violent."),
+    ("Pancreas Pirate", 16, 6, "A microscopic buccaneer from inside somebody's Anatomy Park. Yarrr, etc."),
+    ("Hepatitis A Hulk", 28, 8, "A towering disease-beast from the Anatomy Park outbreak. Wash your hands."),
+    ("Bubonic Plague Cluster", 18, 6, "A creeping clump of medieval doom that escaped a tiny body theme park."),
+    ("Federation Tax Auditor", 13, 5, "Worse than a Gromflomite soldier: this one has a clipboard and questions."),
+    ("Scroopy Noopers", 10, 4, "A radicalized squanch-adjacent kid with a bomb-shaped grudge."),
+    ("Rat-Suit Sentinel", 19, 6, "A sewer rat wearing a tiny powered exo-rig. I'd know, I built worse as a pickle."),
+    ("Reverse Giraffe", 13, 4, "One of my drunk-invention rejects. All neck on the wrong end, all attitude."),
+    ("Snowball's Hover-Sentinel", 20, 6, "A dog-built war drone. My houndmind's defense contract really got out of hand."),
+    ("Gazorpian Reproborg", 21, 6, "A combat android from Gazorpazorp that just keeps reproducing more of itself."),
+]
 ACHIEVEMENTS = [
     Achievement("Dimension Hopper", "Complete all main quests", "Permanent Portal Fuel (Portal Jump has no charge cost)", "player.quest_idx >= len(EXTENDED_QUESTS)"),
     Achievement("Side Quest Morty", "Complete all side quests", "Morty Jr.'s Respect (+10% XP from all sources)", "len(player.subquest_ack) >= len(EXTENDED_SUBQUESTS)"),
     Achievement("Interdimensional Explorer", "Visit every room on the map", "+10 Max HP", "len(player.visited) >= total_rooms"),
-    Achievement("Federation Fighter", "Defeat 15 monsters", "+5 Damage Bonus", "player.monsters_defeated >= 15"),
+    Achievement("Federation Fighter", "Defeat 15 monsters", "+5 Damage Bonus", "player.placed_monsters_defeated >= 15"),
     Achievement("Master Crafter Rick", "Craft 3 unique items", "New crafting recipes unlocked (all recipes become available)", "player.items_crafted >= 3"),
     Achievement("Galaxy Brain (C-137)", "Uncover every scrap of intel hidden across the dimensions", "+10 Max Charge", "len(player.lore_fragments) >= app.total_lore_fragments_count"),
     Achievement(
@@ -1122,8 +1160,12 @@ class Player:
         self.xp    = 0
         self.level = 1
         self.moves_taken            = 0
-        self.monsters_defeated      = 0
+        self.monsters_defeated      = 0   # TOTAL kills, placed AND hidden. This is the kill score you try to max out.
         self.monsters_killed        = 0
+        self.placed_monsters_defeated = 0  # Only the enemies I planted at world-gen. THESE are the ones the achievement and 100 percent count.
+        self.placed_enemy_count     = 0    # How many I planted at the start. Set the moment your game begins.
+        self.max_total_kills        = 0    # The math ceiling: placed plus every hidden one the every-3-kills cascade can ever cough up.
+        self.hidden_pool            = []   # Shuffled bag of brand-new creatures, drawn without repeats as hidden ones spawn.
         self.items_crafted          = 0
         self.crafted_recipes        = set()  # Every gadget Morty's actually built. I count these for the real ending. No faking it.
         self.true_ending_shown      = False  # Trips once Morty 100 percents everything. Then, and only then, am I impressed.
@@ -2355,7 +2397,7 @@ class EnhancedGameApp:
                 elif not room.get("visited"):
                     sensed = self._sensed(x, y, room)
                     symbol, tag = sensed if sensed else ("[?]", "map_unknown")
-                elif room.get("monster"): symbol, tag = "[E]", "map_monster"
+                elif room.get("monster") and not getattr(room["monster"], "hidden", False): symbol, tag = "[E]", "map_monster"
                 elif room.get("npc"):
                     _n = room["npc"]
                     if getattr(_n, "is_shop", False): symbol, tag = "[$]", "map_shop"
@@ -2452,7 +2494,7 @@ class EnhancedGameApp:
                 elif not room.get("visited"):
                     sensed = self._sensed(x, y, room)
                     symbol, tag = sensed if sensed else ("[?]", "mini_unknown")
-                elif room.get("monster"): symbol, tag = "[E]", "mini_monster"
+                elif room.get("monster") and not getattr(room["monster"], "hidden", False): symbol, tag = "[E]", "mini_monster"
                 elif room.get("npc"):
                     _n = room["npc"]
                     if getattr(_n, "is_shop", False): symbol, tag = "[$]", "mini_shop"
@@ -2610,7 +2652,7 @@ class EnhancedGameApp:
                         if "player.quest_idx >= len(EXTENDED_QUESTS)" in achievement.condition: cat_content += f"   📊 Progress: {self.player.quest_idx}/{len(EXTENDED_QUESTS)} main quests completed\n"
                         elif "len(player.subquest_ack) >= len(EXTENDED_SUBQUESTS)" in achievement.condition: cat_content += f"   📊 Progress: {len(self.player.subquest_ack)}/{len(EXTENDED_SUBQUESTS)} side quests completed\n"
                         elif "len(player.visited) >= total_rooms" in achievement.condition: cat_content += f"   📊 Progress: {len(self.player.visited)}/{len(self.world)} rooms visited\n"
-                        elif "player.monsters_defeated >= 15" in achievement.condition: cat_content += f"   📊 Progress: {self.player.monsters_defeated}/15 enemies defeated\n"
+                        elif "player.placed_monsters_defeated >= 15" in achievement.condition: cat_content += f"   📊 Progress: {self.player.placed_monsters_defeated}/15 enemies defeated\n"
                         elif "player.items_crafted >= 3" in achievement.condition: cat_content += f"   📊 Progress: {self.player.items_crafted}/3 items crafted\n"
                         elif "len(player.lore_fragments) >= app.total_lore_fragments_count" in achievement.condition: cat_content += f"   📊 Progress: {len(self.player.lore_fragments)}/{self.total_lore_fragments_count} lore fragments collected\n"
                         elif "player.total_items_collected >= 25" in achievement.condition: cat_content += f"   📊 Progress: {self.player.total_items_collected}/25 items collected\n"
@@ -2710,6 +2752,7 @@ class EnhancedGameApp:
         dlg = tk.Toplevel(self.root); dlg.title("Rick's Garage"); self._center_popup(dlg, 480, 470); dlg.transient(self.root); dlg.grab_set(); self._apply_icon(dlg)
         def start():
             self.player = Player("Morty", mainvar.get(), attachvar.get(), self.difficulty)
+            self._init_hidden_enemy_system()
             save_name = self.current_save_name or "Morty"; self.current_save_name = save_name
             self._write_save(save_name, announce=False)
             dlg.destroy(); self.set_button_states(menu=False); self.print_room(); self.update_info_display(); self.update_minimap(); self.entry.focus_set()
@@ -2876,7 +2919,11 @@ class EnhancedGameApp:
             x, y = p.x, p.y
             self.world[(x, y)]["monster"] = None
             self.world[(x, y)]["last_defeated_monster"] = monster.name
-            p.monsters_defeated += 1
+            is_hidden = getattr(monster, "hidden", False)
+            prev_total = p.monsters_defeated
+            p.monsters_defeated += 1                       # total kill score (placed + hidden)
+            if not is_hidden:
+                p.placed_monsters_defeated += 1            # only placed ones count toward the achievement and 100 percent
             if "Cromulon" in monster.name:
                 p.cromulon_defeated_count += 1
             p.meeseeks_attack_doubled = False
@@ -2885,7 +2932,14 @@ class EnhancedGameApp:
             for line in combat_log:
                 self.append_colored(line + "\n", "combat")
             # ...THEN the loot drop.
-            if monster.loot:
+            if is_hidden:
+                # Hidden ambushers only ever pay out Credits, and I hand them over directly so they're
+                # NOT logged as a collected item. Nothing the game needs ever comes off one of these.
+                gained = random.randint(2, 6)
+                p.federation_credits += gained
+                self.append_colored(f"💰 The {monster.name} jumped you out of nowhere and dropped {gained} Federation Credits. (Total: {p.federation_credits})\n", "success")
+                self._recalc_passives()
+            elif monster.loot:
                 credit_drops = monster.loot.count("Federation Credits")
                 item_loot = [it for it in monster.loot if it != "Federation Credits"]
                 if item_loot:
@@ -2908,6 +2962,8 @@ class EnhancedGameApp:
                 self.append_colored("No loot dropped.\n", "lore")
             # ...THEN the XP gain. Order of operations, Morty.
             self.grant_xp(monster.max_hp, f"defeated {monster.name}")
+            # Every third kill, no matter what kind, pops a fresh hidden one somewhere you've already been.
+            self._cascade_hidden_spawns(prev_total, p.monsters_defeated)
             self.update_info_display()
             self._check_if_dead() # If you died this turn, lock input instantly. Game over means game over.
             return
@@ -3072,10 +3128,11 @@ class EnhancedGameApp:
             self._recalc_passives(); self.update_enhanced_map(); self.update_minimap(); self.update_info_display()
             check_achievements(p, self.world, self); return
         if command == "mr5niper5ux":  # One-shot every enemy and loot the corpses. Efficient.
-            wiped = grabbed = 0
+            wiped = grabbed = placed_wiped = 0
             for pos, rm in self.world.items():
                 if rm.get("monster"):
                     mon = rm["monster"]
+                    if not getattr(mon, "hidden", False): placed_wiped += 1
                     for it in (mon.loot or [])[:]:
                         if it == "Federation Credits": p.federation_credits += 1
                         elif it == "Mega Seed" and getattr(p, "mega_seed_injector_built", False): p.inventory.append(it)
@@ -3087,6 +3144,8 @@ class EnhancedGameApp:
                     rm["last_defeated_monster"] = mon.name; rm["monster"] = None
                     rm["visited"] = True; p.visited.add(pos); wiped += 1
             p.monsters_defeated += wiped
+            p.placed_monsters_defeated += placed_wiped
+            # No cascade here on purpose: this cheat is a board-clear, so re-seeding hidden ones would fight its whole point.
             self.append_colored(f"💀 Cheat: {wiped} enemies evaporated; {grabbed} item(s) collected.\n", "success")
             self._recalc_passives(); self.update_enhanced_map(); self.update_minimap(); self.update_info_display()
             check_achievements(p, self.world, self); return
@@ -3283,7 +3342,11 @@ class EnhancedGameApp:
                 p.inventory.remove("Meeseeks Box")
                 room["monster"] = None
                 room["last_defeated_monster"] = monster.name
+                prev_total = p.monsters_defeated
                 p.monsters_defeated += 1
+                if not getattr(monster, "hidden", False):
+                    p.placed_monsters_defeated += 1
+                self._cascade_hidden_spawns(prev_total, p.monsters_defeated)
                 self.update_info_display()
                 self.print_room()
                 return
@@ -3594,11 +3657,74 @@ class EnhancedGameApp:
             "Finish every last one and Rick might just say something he'll regret. Keep going.\n", "success")
         self.update_info_display()
 
+    def _compute_max_total_kills(self, placed, pool_size):
+        # Every third kill (ANY kind) pops one more hidden enemy, and killing those counts toward the
+        # next three too. So the absolute ceiling is the fixed point of M = placed + floor(M/3),
+        # roughly one and a half times the placed count, capped by how many new creatures I packed.
+        total = 0; available = placed; hidden_left = pool_size
+        while available > 0:
+            available -= 1; total += 1
+            if total % 3 == 0 and hidden_left > 0:
+                available += 1; hidden_left -= 1
+        return total
+
+    def _init_hidden_enemy_system(self):
+        # Called the second a new game begins. Snapshot how many enemies I planted, shuffle the bag of
+        # hidden ones, and work out the max kills this run could ever produce.
+        p = self.player
+        placed = sum(1 for rm in self.world.values() if rm.get("monster") and not getattr(rm["monster"], "hidden", False))
+        p.placed_enemy_count = placed
+        p.placed_monsters_defeated = 0
+        p.hidden_pool = list(HIDDEN_ENEMIES); random.shuffle(p.hidden_pool)
+        p.max_total_kills = self._compute_max_total_kills(placed, len(HIDDEN_ENEMIES))
+
+    def _spawn_hidden_enemy(self):
+        # Drop ONE hidden ambusher onto an already-revealed, totally empty room, using the same rules I
+        # use at world-gen: stay out of the hub's safety bubble and never crowd another monster. No
+        # marker goes on the map, so the room still looks empty until Morty blunders in. Returns whether
+        # one actually landed (it won't if the bag's empty or there's no legal revealed room yet).
+        p = self.player
+        pool = getattr(p, "hidden_pool", None)
+        if not pool: return False  # Bag's empty. I never repeat a creature, so that's that.
+        SAFE_RADIUS = 2
+        def m_dist(a, b): return abs(a[0] - b[0]) + abs(a[1] - b[1])
+        placed_positions = [pos for pos, rm in self.world.items() if rm.get("monster")]
+        here = (p.x, p.y)
+        candidates = []
+        for pos, rm in self.world.items():
+            if not rm.get("visited"): continue                 # only on rooms you've actually revealed
+            if pos == (1, 1) or pos == here: continue           # not on the hub, not right where you stand
+            if rm.get("npc") or rm.get("monster") or rm.get("items") or rm.get("motif") is not None: continue  # fully empty only
+            if m_dist(pos, (1, 1)) <= SAFE_RADIUS: continue     # respect the home safe zone
+            if any(m_dist(pos, mp) < 2 for mp in placed_positions): continue  # same spacing as gen, no clumping
+            candidates.append(pos)
+        if not candidates: return False  # Nowhere legal that you've revealed yet. Skip it; the math still holds as a ceiling.
+        pos = random.choice(candidates)
+        name, base_hp, base_dmg, desc = pool.pop()
+        diff_mod = DIFFICULTY_MODIFIERS[p.difficulty]
+        hp = max(1, int(base_hp * diff_mod["monster_hp_mult"]))
+        dmg = max(1, int(base_dmg * diff_mod["monster_damage_mult"]))
+        # Loot stays empty on purpose; the Credits get handed out on the kill so they never count as a
+        # collected item or feed any achievement. These give nothing the game needs.
+        self.world[pos]["monster"] = Monster(name, hp, hp, dmg, [], desc, hidden=True)
+        return True
+
+    def _cascade_hidden_spawns(self, prev_total, new_total):
+        # One hidden enemy for every NEW multiple of three total kills crossed this turn. Killing a
+        # hidden one bumps the total too, so the chain keeps itself going.
+        spawns = (new_total // 3) - (prev_total // 3)
+        landed = 0
+        for _ in range(max(0, spawns)):
+            if self._spawn_hidden_enemy(): landed += 1
+            else: break
+        if landed:
+            self.update_enhanced_map(); self.update_minimap()
+
     def _show_run_stats(self, header):
         p = self.player
         self.append_colored("\n" + header + "\n", "quest")
         self.append_colored(f"   Moves taken: {p.moves_taken}\n")
-        self.append_colored(f"   Enemies defeated: {p.monsters_defeated}\n")
+        self.append_colored(f"   Enemies defeated: {p.monsters_defeated} (max possible this run: {getattr(p, 'max_total_kills', 0) or p.monsters_defeated})\n")
         self.append_colored(f"   Items crafted: {p.items_crafted}\n")
         self.append_colored(f"   Lore fragments: {len(p.lore_fragments)}\n")
         self.append_colored(f"   Difficulty: {p.difficulty.value.title()}\n")
@@ -3862,7 +3988,7 @@ class EnhancedGameApp:
         self.append_colored(f"Difficulty: {self.player.difficulty.value.title()}\n"); self.append_colored(f"HP: {self.player.hp}/{self.player.max_hp}\n")
         self.append_colored(f"Charge: {self.player.charge}/{self.player.max_charge}\n"); self.append_colored(f"Armor: {self.player.armor}\n"); self.append_colored(f"Damage Bonus: +{self.player.damage_bonus}\n\n")
         self.append_colored(f"Quest Progress: {self.player.quest_idx}/{len(EXTENDED_QUESTS)}\n"); self.append_colored(f"Moves Taken: {self.player.moves_taken}\n")
-        self.append_colored(f"Enemies Defeated: {self.player.monsters_defeated}\n"); self.append_colored(f"Items Crafted: {self.player.items_crafted}\n"); self.append_colored(f"Lore Fragments: {len(self.player.lore_fragments)}\n")
+        self.append_colored(f"Enemies Defeated: {self.player.monsters_defeated} / {getattr(self.player, 'max_total_kills', 0) or self.player.monsters_defeated} possible\n"); self.append_colored(f"Items Crafted: {self.player.items_crafted}\n"); self.append_colored(f"Lore Fragments: {len(self.player.lore_fragments)}\n")
         self.append_colored(f"Total Items Collected: {self.player.total_items_collected}\n"); self.append_colored(f"Deaths: {self.player.deaths}\n\n")
         self.append_colored("🌟 SPECIAL ABILITIES:\n", "achievement")
         for ability in self.player.special_abilities: self.append_colored(f"   • {ability}\n")
@@ -3967,6 +4093,18 @@ class EnhancedGameApp:
                 self.player.true_ending_shown = False
             if not hasattr(self.player, "shop_buyback") or self.player.shop_buyback is None:
                 self.player.shop_buyback = {}
+            # Old save from before hidden enemies existed. Every kill on record was a placed one (no hidden
+            # ones could have existed yet), so seed the placed counter from the old total. Then rebuild the
+            # placed count (alive placed + already-killed placed), shuffle a fresh pool, and recompute the max.
+            if not hasattr(self.player, "placed_monsters_defeated"):
+                self.player.placed_monsters_defeated = self.player.monsters_defeated
+            if not hasattr(self.player, "hidden_pool") or self.player.hidden_pool is None:
+                self.player.hidden_pool = list(HIDDEN_ENEMIES); random.shuffle(self.player.hidden_pool)
+            if not getattr(self.player, "placed_enemy_count", 0):
+                alive_placed = sum(1 for rm in self.world.values() if rm.get("monster") and not getattr(rm["monster"], "hidden", False))
+                self.player.placed_enemy_count = alive_placed + self.player.placed_monsters_defeated
+            if not getattr(self.player, "max_total_kills", 0):
+                self.player.max_total_kills = self._compute_max_total_kills(self.player.placed_enemy_count, len(HIDDEN_ENEMIES))
             self.difficulty = data.get("difficulty", DifficultyLevel.NORMAL)
             self.width = data.get("width", 12); self.height = data.get("height", 12)
             self.total_lore_fragments_count = data.get("total_lore_fragments_count", 0)

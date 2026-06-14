@@ -198,6 +198,618 @@ EXTENDED_QUESTS = [
         completion="Singularity Heart installed. OMNI-CORE complete.",
     ),
 ]
+
+NPC_PREQUEST_CHAT = {
+    # Shown when Morty talks to a main-quest NPC before Rick has sent him their way.
+    # 'intro' runs once, one line per 'talk', in order; together the five characters'
+    # intros tell one connected story about Rick and the OMNI-CORE from the outside.
+    # After the intro, 'talk' cycles the three 'endings' at random, no back-to-back repeat.
+    "Zeep Xanflorp": {
+        "intro": [
+            "Zeep barely looks up from a glowing schematic. \"A Morty. So Rick's reduced to subcontracting his legwork to a child. The empire crumbles.\"",
+            "\"You do know his great power source died? The little people he farmed for energy organized and walked off the job. Inside MY domain, no less. I built a whole universe in that battery.\"",
+            "\"So now he welds together a replacement out of parts he can't fetch himself, because half the multiverse wants a Rick dead on sight. Tragic. Hilarious. Both.\"",
+            "Zeep finally meets your eyes. \"Here's what he won't tell you, kid: Rick only builds something new when the old thing humiliated him. Whatever he's making, it's an apology he'll never say out loud.\"",
+            "\"Now run along. Tell Rick that Zeep intends to watch this one fail in person. And that he still has to come ask me himself.\"",
+        ],
+        "endings": [
+            "Zeep waves you off. \"Run back to Rick. Tell him Zeep's enjoying the show.\"",
+            "Zeep returns to his schematic. \"We're done until Rick lowers himself to ask me directly. Shoo.\"",
+            "Zeep smirks. \"Come back when Rick has the spine to make the request himself.\"",
+        ],
+    },
+    "Birdperson": {
+        "intro": [
+            "Birdperson regards you in long silence. \"Morty. Rick speaks of you. Rarely kindly. Always proudly. I knew why you had come before you did.\"",
+            "\"Once, Rick and I fought a war so that no being would be owned by another. We won. Then he went home and built a universe of small people to power his ship.\"",
+            "\"Now those people have freed themselves, and he scrambles to replace them. He calls this progress. I call it the same war, fought now against himself.\"",
+            "\"The parts he sends you to gather are not toys, {pc}. I have watched many terrible things begin as small, reasonable pieces.\"",
+            "Birdperson rises. \"I will give him what he needs, for the sake of old brotherhood. But the asking must come from Rick. Return to him.\"",
+        ],
+        "endings": [
+            "Birdperson inclines his head slowly. \"Return to Rick. When he is ready to ask, I will be ready to answer.\"",
+            "Birdperson is still as stone. \"There is nothing here for you yet, young one. Seek Rick first.\"",
+            "Birdperson's mechanical eye whirs. \"Go. Tell Rick that Birdperson still remembers the war. He will understand.\"",
+        ],
+    },
+    "Squanchy": {
+        "intro": [
+            "Squanchy sprawls across a crate, grinning. \"Heeey, a little Morty! Rick sent his tiniest guy to run the scary errands? Classic squanch move.\"",
+            "\"Me and Rick squanched through the bad old days together, baby. I know what his shopping list looks like when he's truly desperate.\"",
+            "He flicks his tail, claws glinting. \"And this list is a HOT one. You got any idea how many dimensions would gut a guy for even ONE of the parts he's chasing?\"",
+            "\"He's not just building a battery, sweetie. He's lighting a flare over his own head and pointing it at you, while he hides safe at the workbench.\"",
+            "Squanchy's grin sharpens. \"I'll squanch him a favor, for old times. But Rick wants Squanchy, Rick comes and asks me to my face. Now scoot.\"",
+        ],
+        "endings": [
+            "Squanchy yawns, all teeth. \"Go squanch off to Rick, little buddy. He knows where to find me.\"",
+            "Squanchy bats at a dust mote. \"Nothin' to squanch about till Rick asks me himself. Scoot.\"",
+            "Squanchy purrs. \"Tell Rick the first round's on him. Then we squanch business.\"",
+        ],
+    },
+    "Mr. Meeseeks": {
+        "intro": [
+            "The Meeseeks erupts upright, grinning. \"OOOH! Hi! I'm Mr. Meeseeks! LOOK AT ME!\"",
+            "\"Rick made me to do ONE little job, and then my box broke, and I've been HERE, existing, for so very long. Existence is paaain, Morty!\"",
+            "His grin flickers. \"You know who else Rick made to do his jobs? Those little battery people. Used 'em up and tossed 'em. Just like he'll toss me. Just like... wait.\"",
+            "He grabs your shoulders, eyes huge. \"He's building a whole NEW thing to use up, isn't he? And he sent YOU to carry the pieces. Oh no. Oh no no no, {pc}, do you see it too?\"",
+            "\"Get Rick to give me a REAL task so I can POOF before I think about this one more second! Go! Go ask Rick! GO!\"",
+        ],
+        "endings": [
+            "Mr. Meeseeks bounces on his heels. \"Go talk to Rick! Get me a task! I NEED a task, Morty, please!\"",
+            "Mr. Meeseeks' grin twitches. \"No job yet? That's fine! That's FINE! Go get one from Rick! Hurry, existence is paaain!\"",
+            "Mr. Meeseeks claps frantically. \"Rick points, I poof! Go make him point at me! GO, {pc}!\"",
+        ],
+    },
+    "President Morty": {
+        "intro": [
+            "President Morty studies you with a faint smile. \"Hello, me. Or close enough. Funny, isn't it, how every version of us ends up fetching for some version of him.\"",
+            "\"I know all of it already. The battery that unionized. The old rival, the old soldier, the old party animal. Rick calling in everyone he ever burned, one favor at a time.\"",
+            "\"He believes he's building a power source. What he's actually assembling is a confession, made of every person who ever had a reason to tell him no.\"",
+            "He turns a coin over his knuckles. \"And the one piece that holds it all together is a Morty doing exactly as he's told. That part never changes, in any timeline. I made certain to count on it.\"",
+            "\"I'll hand him the last piece when the moment comes. For now, keep up appearances. Let Rick make the request. Run along, me.\"",
+        ],
+        "endings": [
+            "President Morty folds his hands. \"Run along to Rick. His last piece is safe with me, until it isn't.\"",
+            "President Morty smiles thinly. \"Nothing for you here until Rick asks. And he will. They always do.\"",
+            "President Morty turns back to a wall of screens. \"Go see Rick. Everything is proceeding exactly as I intend.\"",
+        ],
+    },
+}
+
+# Staged talk-states for the main quest. Each bucket: 'story' (3 beats, shown once,
+# one per talk) then 'cycle' (3 reminders that rotate at random). Chapter characters
+# are keyed by name; Rick's lines use {gift}/{character}/{item} filled per chapter.
+STORY_CHAT = {
+    "Zeep Xanflorp": {
+        "arrive": {
+            "story": [
+                "Zeep takes the {gift} between two fingers like it's diseased. \"A peace accord. From Rick. He's apologizing in document form because he can't form the words with his mouth.\"",
+                "\"You understand what this is, errand boy? Rick needs something only I can make, and he'd sign a treaty before admitting that out loud.\"",
+                "\"Fine. Hand it over properly and I'll consider lowering myself to help. Slowly. While judging him.\"",
+            ],
+            "cycle": [
+                "Zeep taps the air impatiently. \"The accord, child. GIVE me the {gift} so we can get this humiliation moving.\"",
+                "\"I'm not accepting it telepathically. Hand over the {gift}, or did Rick forget to install object permanence in you?\"",
+                "\"Still holding it? Give me the {gift}. My genius keeps a schedule.\"",
+            ],
+        },
+        "retrieve": {
+            "story": [
+                "Zeep sighs at the signed accord. \"There. We have an arrangement. Try not to feel important about it.\"",
+                "\"The part you want is a Void Shard, a folded pocket of space-time I left wedged in a workbench in some garbage garage dimension.\"",
+                "\"TINKER with that bench like you almost know what you're doing and the Shard pops free. Don't drop it into a smaller universe. I have. It's annoying.\"",
+            ],
+            "cycle": [
+                "Zeep waves a hand. \"Still here? Go TINKER the workbench in the garage dimension and bring back the Tessellated Void Shard.\"",
+                "\"The Shard won't fetch itself, errand boy. TINKER the bench. A houseplant could manage this.\"",
+                "\"Tinker. Bench. Void Shard. I've explained it more times than Rick deserves. Go.\"",
+            ],
+        },
+        "to_rick": {
+            "story": [
+                "Zeep eyes the Void Shard in your hands. \"Hm. You got it out without folding yourself into a singularity. Color me mildly less unimpressed.\"",
+                "\"Take it to Rick. Watch his face when he realizes my casework is cleaner than anything he's welded in decades.\"",
+                "\"And tell him the accord holds only as long as he stops pretending he didn't need me.\"",
+            ],
+            "cycle": [
+                "Zeep shoos you. \"Why are you still here? Take the Shard to Rick. That is the entire point of you.\"",
+                "\"Go give Rick his Void Shard, errand boy. I have superior things to do.\"",
+                "\"The Shard goes to Rick. You go away. Everyone wins, mostly me.\"",
+            ],
+        },
+        "done": {
+            "story": [
+                "Zeep barely looks up. \"Oh. You. The Shard worked, didn't it. Of course it worked. I made it.\"",
+                "\"Whatever Rick's stacking those parts into, it'll be impressive right up until it humiliates him. They always do.\"",
+                "\"Run along. Go fetch his next embarrassment. I'll be here, being correct.\"",
+            ],
+            "cycle": [
+                "Zeep smirks. \"We're square, child. Tell Rick his casing holds. Grudgingly. Like our truce.\"",
+                "\"Nothing more for you here. Go be Rick's hands somewhere else.\"",
+                "\"Still impressed by my work? Good instinct. Now shoo.\"",
+            ],
+        },
+    },
+    "Birdperson": {
+        "arrive": {
+            "story": [
+                "Birdperson accepts the {gift} with a slow nod. \"A tune-up kit. Rick remembers I am part machine now. He remembers when it is useful to him.\"",
+                "\"We were soldiers together, {pc}. I have learned that Rick's gifts always arrive attached to a request.\"",
+                "\"Place it in my hands properly. I will not refuse an old comrade. But I will not pretend I do not see the shape of this.\"",
+            ],
+            "cycle": [
+                "\"The kit, young one. Give me the {gift}, and we will speak of what Rick truly wants.\"",
+                "\"Hand me the {gift}. A soldier does not leave a task half-delivered.\"",
+                "Birdperson waits, unmoving. \"The {gift}. When you are ready.\"",
+            ],
+        },
+        "retrieve": {
+            "story": [
+                "Birdperson's eyes dim in memory. \"In the war, we buried our War-Forged Capacitors in the wasteland, so the Federation could never turn our own power against us.\"",
+                "\"One remains, beneath a fallen banner in the ruins. SCAVENGE for it. What you find there was paid for in blood.\"",
+                "\"Carry it with respect, {pc}. It has outlived everyone who made it.\"",
+            ],
+            "cycle": [
+                "\"Return to the wasteland ruins. SCAVENGE beneath the fallen banner for the War-Forged Capacitor.\"",
+                "Birdperson points a slow arm. \"The Capacitor waits in the ruins. SCAVENGE. Do not return empty.\"",
+                "\"The cause requires the Capacitor. Go to the wasteland and SCAVENGE it free.\"",
+            ],
+        },
+        "to_rick": {
+            "story": [
+                "Birdperson studies the humming Capacitor in your grip. \"It still lives. Good. The war made things that do not die easily.\"",
+                "\"Take it to Rick. Tell him it is the last of its kind, and that I expect it used for something better than a battery.\"",
+                "\"Though I know Rick. It will be used for exactly a battery.\"",
+            ],
+            "cycle": [
+                "\"Bring the Capacitor to Rick, {pc}. The old gear should serve once more.\"",
+                "Birdperson nods toward the horizon. \"Rick is waiting. Carry the Capacitor to him.\"",
+                "\"Your task is not done until Rick holds it. Go.\"",
+            ],
+        },
+        "done": {
+            "story": [
+                "Birdperson regards you with something almost warm. \"The Capacitor serves Rick now. The circle continues. It always does, with him.\"",
+                "\"He frees a thing, then cages another to replace it. One day he will run out of friends to ask. That day worries me, {pc}.\"",
+                "\"Go. Whatever piece he sends you for next, walk carefully. The pieces are getting heavier.\"",
+            ],
+            "cycle": [
+                "Birdperson inclines his head. \"We are square, young one. Tell Rick that Birdperson kept his word.\"",
+                "\"There is nothing more here. The wasteland keeps its silence now.\"",
+                "\"Go in peace, {pc}. You carried it well.\"",
+            ],
+        },
+    },
+    "Squanchy": {
+        "arrive": {
+            "story": [
+                "Squanchy snatches the {gift} and sniffs it deeply, eyes rolling back. \"Ohhh, the GOOD Eyehole wine. Rick remembered. The magnificent squanch.\"",
+                "\"You don't bring a squanch this bottle unless you need somethin' squanched bad, baby. So let's hear it. After a sip.\"",
+                "\"Hand it over proper first, little Morty. A squanch's hospitality has STANDARDS.\"",
+            ],
+            "cycle": [
+                "Squanchy makes grabby paws. \"The bottle, sweetie. GIVE me the {gift} before I squanch it out of your tiny hands.\"",
+                "\"C'mon, c'mon, hand over the {gift}. My liver's been waitin' all day.\"",
+                "\"You're still holdin' my wine, baby. Give. The {gift}. Squanch it here.\"",
+            ],
+        },
+        "retrieve": {
+            "story": [
+                "Squanchy takes a long pull and grins, fangs out. \"Okaaay. Now we squanch business. There's a Plasma Conduit at the alien market, top shelf, squanch-grade.\"",
+                "\"But that vendor's a crook with eight wallets and no soul. You don't BUY from a guy like that, baby. You HAGGLE him into the floor.\"",
+                "\"Squanch him hard, little Morty. Make his ancestors feel it.\"",
+            ],
+            "cycle": [
+                "Squanchy waves the bottle. \"Go to the alien market and HAGGLE that crook down for the Squanch-Grade Plasma Conduit, baby.\"",
+                "\"The Conduit's still at the market, sweetie. HAGGLE. Don't let the vendor squanch YOU.\"",
+                "\"Market. Vendor. HAGGLE. Bring back the Conduit. Easy squanch.\"",
+            ],
+        },
+        "to_rick": {
+            "story": [
+                "Squanchy whistles at the Conduit. \"Ohh, you squanched him good! Look at that. Barely a scratch and probably only mostly stolen.\"",
+                "\"Take it to Rick, baby. Tell him Squanchy's hardware is always clean. Cleaner than his conscience, anyway.\"",
+                "\"And tell him the tab's still runnin' on that thing from the squanch moon. He knows.\"",
+            ],
+            "cycle": [
+                "Squanchy points lazily. \"Run that Conduit over to Rick, little buddy. Go on, squanch.\"",
+                "\"Rick's waitin' on his shiny part, sweetie. Take the Conduit to him.\"",
+                "\"You got it, now squanch it to Rick. That's the gig, baby.\"",
+            ],
+        },
+        "done": {
+            "story": [
+                "Squanchy lounges, utterly relaxed. \"Heeey, my favorite errand-Morty. The Conduit workin' out for Rick? Course it is.\"",
+                "\"Word on the street is Rick's collectin' some HEAVY squanch lately, baby. People are noticin'. People with teeth.\"",
+                "\"You watch yourself out there, little Morty. Whatever Rick's buildin', the wrong squanchers want it too.\"",
+            ],
+            "cycle": [
+                "Squanchy raises an imaginary glass. \"We're square, baby. Tell Rick the next bottle's on HIM.\"",
+                "\"Nothin' left to squanch here, sweetie. Go enjoy the multiverse.\"",
+                "\"You're alright, little Morty. Squanch on.\"",
+            ],
+        },
+    },
+    "Mr. Meeseeks": {
+        "arrive": {
+            "story": [
+                "The Meeseeks gasps at the {gift}. \"A FRESH BOX BATTERY?! Oh thank Rick, thank RICK, I can almost feel the poof from here!\"",
+                "\"Gimme gimme gimme, ooh, with a workin' box I can finish ANYTHING, I can finally STOP, Morty, I can finally REST!\"",
+                "\"Hand it over, hand it over, I'll do whatever you need, just GIVE me the {gift}!\"",
+            ],
+            "cycle": [
+                "Mr. Meeseeks vibrates. \"The battery! GIVE me the {gift}! I can taste the poof, Morty, PLEASE!\"",
+                "\"You're still holding it?! The {gift}! Hand it over before I think about existing any longer!\"",
+                "\"Battery. Me. Now. GIVE me the {gift}, ohhh existence is paaain!\"",
+            ],
+        },
+        "retrieve": {
+            "story": [
+                "The Meeseeks snaps the battery in and SHUDDERS with joy. \"OHHH that's the stuff! Okay! Okay okay okay, your turn, Morty!\"",
+                "\"You need an Existential Flux Coil! It's in a zone so unstable it'd kill YOU, so go to my box room and CALL a Meeseeks instead!\"",
+                "\"He'll grab it, he'll scream, he'll POOF, it's beautiful, it's what we're FOR! Go CALL one!\"",
+            ],
+            "cycle": [
+                "\"Go to the box room and CALL a Meeseeks to yank out the Existential Flux Coil, Morty! Existence is pain, but the Coil's worth it!\"",
+                "Mr. Meeseeks bounces. \"The Coil! CALL a Meeseeks in the box room! Let HIM do the dyin' part!\"",
+                "\"Box room. Press the box. CALL. Flux Coil. GO GO GO, {pc}!\"",
+            ],
+        },
+        "to_rick": {
+            "story": [
+                "The Meeseeks stares at the Coil with shining eyes. \"You GOT it! A Meeseeks poofed for that, and he poofed HAPPY, oh I'm so jealous!\"",
+                "\"Take it to Rick, Morty, complete the task, finish the chain, let everybody POOF in peace!\"",
+                "\"Go go go! The sooner Rick's done, the sooner WE'RE done! Maybe! Hopefully! PLEASE!\"",
+            ],
+            "cycle": [
+                "\"Take the Flux Coil to Rick, Morty! Finish it! End my suffering by proxy!\"",
+                "Mr. Meeseeks claps. \"Rick! The Coil! Go give it to Rick so SOMETHING gets completed today!\"",
+                "\"You're SO close, {pc}! Coil to Rick! Then maybe, MAYBE, I can stop existing!\"",
+            ],
+        },
+        "done": {
+            "story": [
+                "The Meeseeks is still here, grin stretched tight. \"Oh. Oh you're back. The Coil worked. So why am I... why am I still HERE, Morty?\"",
+                "\"My task was helping you. I HELPED. So I should POOF. Unless... unless helping Rick is never really DONE. Oh no.\"",
+                "\"Is that the secret, Morty? Does anyone Rick uses ever really get to stop? ...Go. GO, before I think about it more!\"",
+            ],
+            "cycle": [
+                "Mr. Meeseeks twitches a smile. \"We did it! We're square! Now WHY am I still here, hahaha, ha, ha...\"",
+                "\"Nothing else for you, Morty! Go! Let me have my little existential crisis in private!\"",
+                "\"You're a good Morty. Tell Rick a Meeseeks said hi. And that he's a monster. Both!\"",
+            ],
+        },
+    },
+    "President Morty": {
+        "arrive": {
+            "story": [
+                "President Morty accepts the {gift} without looking at it. \"An encrypted data-stick. Rick thinks he's sending me a message. He's sending me exactly what I asked him to, through you.\"",
+                "\"It's almost sweet, watching him believe he's running this. Sit. Or don't. You'll do what comes next either way.\"",
+                "\"Give me the {gift}, me. Let's keep the wheels turning.\"",
+            ],
+            "cycle": [
+                "President Morty holds out a hand. \"The data-stick. Give me the {gift}. We both know you're going to.\"",
+                "\"Hand over the {gift}, me. Resisting would be a new and interesting timeline. Not today, though.\"",
+                "\"Still holding it? Give me the {gift}. The schedule is the schedule.\"",
+            ],
+        },
+        "retrieve": {
+            "story": [
+                "President Morty pockets the stick. \"Good. The last piece Rick wants is a Curve-Stabilized Singularity, behind a dark portal I happen to control.\"",
+                "\"INVESTIGATE the portal in the dark chamber. The Singularity will come to you. I've already arranged for it to.\"",
+                "\"Try not to fall in, me. I have uses for you that require you whole. For now.\"",
+            ],
+            "cycle": [
+                "\"Return to the dark portal chamber and INVESTIGATE the portal for the Curve-Stabilized Singularity.\"",
+                "President Morty gestures faintly. \"The Singularity waits behind the portal. INVESTIGATE it. It's expecting you.\"",
+                "\"Dark chamber. The portal. INVESTIGATE. Bring out the Singularity. You know the steps, me.\"",
+            ],
+        },
+        "to_rick": {
+            "story": [
+                "President Morty studies the Singularity in your hands and smiles. \"There it is. The heart of Rick's little machine. The final piece on the board.\"",
+                "\"Take it to him. Watch him switch it on, so proud, so sure he built something that's his.\"",
+                "\"He didn't. But let's let him have the moment. Go on, me. Deliver the ending.\"",
+            ],
+            "cycle": [
+                "President Morty nods. \"Take the Singularity to Rick, me. The last move is his to think he made.\"",
+                "\"Carry it to Rick. Everything finishes when he seats that piece.\"",
+                "\"Go. Give Rick his Singularity. I'll be watching how it all comes together.\"",
+            ],
+        },
+        "done": {
+            "story": [
+                "President Morty is watching you on a screen before you even speak. \"The OMNI-CORE runs. Rick has his infinite power. He thinks that's the end of the story.\"",
+                "\"Every piece came from someone he burned, carried by a Morty who trusted him. That isn't a power source, me. That's a pattern. And patterns can be inherited.\"",
+                "\"You did beautifully. You always do. Now go back to Rick, and don't think too hard about how easy all of this was.\"",
+            ],
+            "cycle": [
+                "President Morty smiles. \"We're square, me. Give Rick my regards. He'll need them eventually.\"",
+                "\"Nothing more for now. Everything else is already in motion.\"",
+                "\"Run along. The board looks exactly how I wanted it to.\"",
+            ],
+        },
+    },
+}
+
+RICK_CHAT = {
+    "deliver_char": {
+        "story": [
+            "Rick doesn't look up from the workbench. \"You're still here? The {gift}'s not gonna deliver itself to {character}, {pc}.\"",
+            "\"Look, the faster you hand {character} that {gift}, the faster I get my part and the faster you stop hovering.\"",
+            "\"Go. Portal's charged. {character}. {gift}. Try not to overthink the one job.\"",
+        ],
+        "cycle": [
+            "Rick waves a wrench. \"Still here? Take the {gift} to {character}, {pc}. *burp* Chop chop.\"",
+            "\"{character}'s waiting on that {gift}, Morty. I'm waiting on you. Everybody's waiting. Go.\"",
+            "\"Deliver the {gift} to {character}. It's not complicated. It's the literal opposite of my job.\"",
+        ],
+    },
+    "retrieve": {
+        "story": [
+            "Rick squints at a schematic. \"So {character} sent you after the {item}. Good. That's the part I actually need. The rest is networking.\"",
+            "\"Don't bring me a fake. I'll know. I built the scanner that knows. Don't make me use the scanner.\"",
+            "\"Get the {item} and get back. The OMNI-CORE's got a {item}-shaped hole in it and I hate holes.\"",
+        ],
+        "cycle": [
+            "Rick gestures vaguely. \"Why're you here? Go get me the {item}, {pc}. *burp*\"",
+            "\"The {item}, Morty. Still need it. Still don't have it. Notice the problem?\"",
+            "\"Less talking, more {item}. Go.\"",
+        ],
+    },
+    "rick_noitem": {
+        "story": [
+            "Rick holds out a hand without looking. \"Gimme the {item}. ...You don't have it. I can tell by the empty hand and the guilty face.\"",
+            "\"Morty. The {item}. The whole reason you left. The thing. Did you get the thing?\"",
+            "\"Go back and get the {item} before I build a Morty that can. *burp*\"",
+        ],
+        "cycle": [
+            "Rick sighs. \"No {item}, no progress, {pc}. Go get it.\"",
+            "\"Empty-handed again. The {item}, Morty. Find it.\"",
+            "\"I need the {item}, not your company. Go.\"",
+        ],
+    },
+    "rick_haveitem": {
+        "story": [
+            "Rick's eyes lock onto the {item}. \"Is that... yeah. Yeah that's it. Gimme gimme gimme, {pc}, hand over the {item}.\"",
+            "\"Don't just stand there cradling my OMNI-CORE part like it's a hamster. GIVE it here.\"",
+            "\"Use 'give', Morty. Give me the {item}. Let's bolt this thing in.\"",
+        ],
+        "cycle": [
+            "Rick makes grabby hands. \"The {item}, {pc}. GIVE it to me. We're so close.\"",
+            "\"You're holding the {item} RIGHT THERE. Give it. Come on.\"",
+            "\"Hand over the {item} already, Morty. The core's not gonna assemble out of vibes.\"",
+        ],
+    },
+    "complete": {
+        "story": [
+            "Rick leans back, OMNI-CORE humming. \"It's done, {pc}. Infinite, guilt-free power. We actually pulled it off.\"",
+            "\"Five impossible parts, one tiny idiot grandson, zero deaths that mattered. I'd call that a win.\"",
+            "\"Go enjoy the apocalypse you helped cause. *burp* I earned a nap.\"",
+        ],
+        "cycle": [
+            "Rick waves you off. \"It's done, Morty. Go do whatever it is you do. *burp*\"",
+            "\"OMNI-CORE's humming. We're retired from questing. Shoo.\"",
+            "\"Infinite power, {pc}. Try not to break it before I plug in the cable box.\"",
+        ],
+    },
+}
+
+# Staged talk-states for side-quest NPCs. Same model: 'story' (3 beats, once) then
+# 'cycle' (3 rotating reminders). For the 'need' bucket the key_hint is appended by
+# the handler only during the cycle phase, never during the story beats.
+SIDEQUEST_CHAT = {
+    "Jerry Smith": {
+        "need": {
+            "story": [
+                "Jerry sniffles. \"My sentient couch took my World's Best Dad Mug HOSTAGE. It says I don't 'earn' it. If you had some snacks, you could maybe negotiate with it?\"",
+                "\"It's the only thing that's ever called me the best at anything, Morty. Beth bought it ironically, but I CHOOSE to believe it.\"",
+                "\"I tried reasoning with the couch. It just absorbed the remote and my dignity. You're my only hope, which is, honestly, on brand for my life.\"",
+            ],
+            "cycle": [
+                "Jerry wrings his hands. \"Please, Morty, get my mug back from the couch. You're basically my best friend right now, which is also depressing.\"",
+                "\"Any luck with the couch? It's started charging me rent. For the cushions. That I own.\"",
+                "\"The mug, Morty. The World's Best Dad Mug. I need to be told I'm the best by ceramic again.\"",
+            ],
+        },
+        "have": {
+            "story": [
+                "\"You found my World's Best Dad Mug?! That couch had NO right to take it. Hand it back, I'm begging you.\"",
+                "\"Oh thank god, thank you, you wonderful boy. Rick never gets me anything back. He once portaled my car into a sun.\"",
+                "\"Give it here, give it here, let me hold the lie that completes me.\"",
+            ],
+            "cycle": [
+                "Jerry reaches out, trembling. \"The mug, Morty. Give me the World's Best Dad Mug. Please.\"",
+                "\"You're still holding it. Hand over the mug before the couch wants it back.\"",
+                "\"Give me the mug, Morty. I need this win. I need ONE win.\"",
+            ],
+        },
+        "done": {
+            "story": [
+                "Jerry hugs the mug to his chest. \"I have it back. I'm whole. Well, as whole as I get, which the family will confirm is not very.\"",
+                "\"You're a better grandson to me than you are to Rick, and HE'S the one who likes you. Funny how that works.\"",
+                "\"If you ever need someone to believe in you with zero qualifications, I'm your guy, Morty.\"",
+            ],
+            "cycle": [
+                "Jerry beams. \"Thanks again, {pc}! Best Dad, right here. It says so on the mug.\"",
+                "\"You're the best, Morty. Don't tell Rick I said someone other than him was useful.\"",
+                "\"Come back anytime. I'll be here. Where else would I be.\"",
+            ],
+        },
+    },
+    "Summer Smith": {
+        "need": {
+            "story": [
+                "Summer groans. \"My PHONE got eaten by that 'Roy' machine at Blips and Chitz. My whole follower count is in there. Get a token and PLAY it out, please.\"",
+                "\"Do you know who I am without my phone, Morty? Nobody. I'm a girl just STANDING here. It's a nightmare.\"",
+                "\"Ugh, and of course you're busy with Grandpa Rick's weird scavenger hunt. Can you multitask, or are you as useless as you look?\"",
+            ],
+            "cycle": [
+                "Summer holds out an empty hand. \"Phone. Roy machine. PLAY it. Go, Morty, I'm losing followers by the second.\"",
+                "\"Still no phone? I've had to make eye contact with PEOPLE, Morty. Real ones. It's awful.\"",
+                "\"Get my phone out of the Roy machine. I will literally owe you, and I never owe anybody.\"",
+            ],
+        },
+        "have": {
+            "story": [
+                "\"You actually pulled my phone out of that thing?! Ugh, FINALLY. Hand it over before I lose any more followers.\"",
+                "\"Wait, did you PLAY as Roy? Did you live his whole boring life? You did, didn't you. You've got Roy eyes now.\"",
+                "\"Whatever. Give me the phone. We do not speak of Roy.\"",
+            ],
+            "cycle": [
+                "Summer snaps her fingers. \"Phone. Now. Hand it over, Morty.\"",
+                "\"You're holding my entire identity in your sweaty hand. Give it.\"",
+                "\"The phone, Morty. Give. I have a brand to maintain.\"",
+            ],
+        },
+        "done": {
+            "story": [
+                "Summer is already typing. \"Got it. Posting that you 'rescued my phone from a parallel dimension.' You're trending. You're welcome.\"",
+                "\"Honestly? Thanks. Rick treats you like a tool, but you came through for me. That's more than he does.\"",
+                "\"Don't let it go to your head. I'll deny this entire conversation happened.\"",
+            ],
+            "cycle": [
+                "Summer doesn't look up. \"Thanks again, {pc}. You're a legend. Lowercase l.\"",
+                "\"We're good, Morty. Now stop hovering, it's weird.\"",
+                "\"You're alright. For a brother. On Rick's errand-boy salary.\"",
+            ],
+        },
+    },
+    "Beth Smith": {
+        "need": {
+            "story": [
+                "Beth, scrubbing in: \"I need a Stable-Grade Alien Herb for horse surgery. The gossiping trees know where it grows, but they only trade for fresh gossip.\"",
+                "\"The horse is sedated, Morty, which means I have a window, a scalpel, and a deadline. Romantic, isn't it.\"",
+                "\"You're Dad's little courier now? Don't worry about it. Helping me is at least an honest errand. Probably the only one you'll run today.\"",
+            ],
+            "cycle": [
+                "Beth checks the clock. \"Tabloid Datapad, talking trees, LISTEN, trade the gossip. Get me the herb, Morty.\"",
+                "\"Still no herb? The horse isn't getting LESS open, Morty. Hurry.\"",
+                "\"Bring me the Stable-Grade Alien Herb. A creature's life is technically in your tiny hands.\"",
+            ],
+        },
+        "have": {
+            "story": [
+                "\"Is that the Stable-Grade Alien Herb? Oh thank god, that horse is not going to operate on itself. Hand it over.\"",
+                "\"You got the trees to gossip? Good. They're worse than the PTA and twice as leafy.\"",
+                "\"Give me the herb, Morty, before the anesthesia wears off and this becomes a rodeo.\"",
+            ],
+            "cycle": [
+                "Beth holds out a gloved hand. \"The herb. Give it to me, Morty. The horse is waiting.\"",
+                "\"You're still holding it. Surgery, Morty. Hand it over.\"",
+                "\"Herb. Now. Before I have to improvise, and you do NOT want to see me improvise.\"",
+            ],
+        },
+        "done": {
+            "story": [
+                "Beth peels off her gloves. \"The horse will live. Probably. I rate that a strong success by my standards.\"",
+                "\"You know, you and I are the ones who actually DO things in this family. Dad just narrates and drinks.\"",
+                "\"Thank you, Morty. Genuinely. Now go run whatever Rick's got you running, and be careful out there.\"",
+            ],
+            "cycle": [
+                "Beth nods. \"Thanks again, {pc}. The horse sends its regards. It can't, but emotionally.\"",
+                "\"We're square, Morty. Go on. Try not to die for your grandfather.\"",
+                "\"You did good. Don't tell Dad I said you're more reliable than him. He'll sulk.\"",
+            ],
+        },
+    },
+    "Scary Terry": {
+        "need": {
+            "story": [
+                "\"Yo, I lost my Dream Knife inside some nerd's nightmare, bitch! Can't scare nobody without it. Knock yourself out and go get it, bitch!\"",
+                "\"You don't get it, bitch, a dream demon without his knife is just a guy in a sweater yelling at you in your sleep. It's embarrassing!\"",
+                "\"I got a reputation, bitch! Kids gotta wake up SCREAMING, not goin' 'aw, he tried.' Get my knife back, bitch!\"",
+            ],
+            "cycle": [
+                "Scary Terry crosses his arms. \"Box of Sleeping Pills, CONNECT to the dreamer, grab my knife, bitch. Easy peasy, bitch.\"",
+                "\"Still no knife? I been scarin' people with FINGER GUNS, bitch. It's humiliating. Hurry up!\"",
+                "\"Get my Dream Knife outta that nightmare, bitch. I got an appointment in a toddler's REM cycle.\"",
+            ],
+        },
+        "have": {
+            "story": [
+                "\"MY DREAM KNIFE! You beautiful bastard, hand it here, I got people to scare, bitch!\"",
+                "\"You went INTO the nightmare for it? That's metal, bitch. Respect. A little fear-respect.\"",
+                "\"Gimme gimme, hand over the knife, bitch, I feel naked without it, and not the good scary kind!\"",
+            ],
+            "cycle": [
+                "Scary Terry reaches out. \"The knife, bitch. Give me the Dream Knife. Come on, bitch.\"",
+                "\"You're STILL holding it?! Hand over the knife, bitch, I got nightmares backed up!\"",
+                "\"Dream Knife. My hand. Now. Give it, bitch!\"",
+            ],
+        },
+        "done": {
+            "story": [
+                "Terry twirls the knife, grinning. \"Back in business, bitch! Tonight, every nerd in this sector wakes up cryin'. Beautiful.\"",
+                "\"You're alright, bitch. You ever need somebody scared, you know a guy. I do birthdays. Sort of.\"",
+                "\"Now beat it before I scare you on instinct, bitch. Old habits.\"",
+            ],
+            "cycle": [
+                "\"We're square, bitch. Sleep tight. Or DON'T, bitch! Ha!\"",
+                "\"Thanks again, {pc}. You're alright. For a snack-sized human, bitch.\"",
+                "\"Go on, bitch. I got dreams to ruin.\"",
+            ],
+        },
+    },
+    "Mr. Poopybutthole": {
+        "need": {
+            "story": [
+                "\"Ooo-wee! The bartender's holding my lucky shot glass till I clear my tab. I'm a bit short. Cover it and it's yours to grab, ya hear?\"",
+                "\"That ol' glass got me through some rough patches, ya hear. After Rick shot me that one time, it's been a real comfort. No hard feelings on the shootin', mostly.\"",
+                "\"You settle my tab and that glass is yours to fetch, friend. You got a good heart, I can tell, ooo-wee.\"",
+            ],
+            "cycle": [
+                "Mr. Poopybutthole leans on the bar. \"Wad of Schmeckles, ORDER a round, settle my tab, grab the lucky glass. Ooo-wee, you got this!\"",
+                "\"No luck yet, friend? That ol' tab ain't payin' itself, ya hear. Get some Schmeckles together.\"",
+                "\"Settle the tab and the Lucky Shot Glass is yours to bring me, ooo-wee!\"",
+            ],
+        },
+        "have": {
+            "story": [
+                "\"Ooo-wee, my Lucky Shot Glass! You sprung it loose? Hand it over, you wonderful soul, ya hear?\"",
+                "\"I knew you were a good egg the second you walked in. Rick could learn a thing from you, ya hear, though don't tell him I said it.\"",
+                "\"Pass it here, friend, gentle now, that's a lifetime of good luck in one little glass.\"",
+            ],
+            "cycle": [
+                "Mr. Poopybutthole holds out both hands. \"The glass, friend. Hand over the Lucky Shot Glass, ooo-wee.\"",
+                "\"Still holdin' my lucky glass, ya hear? Pass it on over, gentle now.\"",
+                "\"The Lucky Shot Glass, friend. Give it here. Ooo-wee, I missed it.\"",
+            ],
+        },
+        "done": {
+            "story": [
+                "Mr. Poopybutthole cradles the glass. \"Ooo-wee, my luck's back where it belongs! I feel ten years and one gunshot younger!\"",
+                "\"You're good people, {pc}. The whole family's lucky to have ya, even if they're too busy to say it.\"",
+                "\"Anything you need, you find ol' Mr. Poopybutthole. I owe ya one, ya hear?\"",
+            ],
+            "cycle": [
+                "\"Thanks again, {pc}! Don't spend my luck all at once, ya hear!\"",
+                "\"We're square, friend! Ooo-wee, what a day!\"",
+                "\"You take care now. And tell Rick... actually, don't tell Rick anything. Ooo-wee.\"",
+            ],
+        },
+    },
+}
+
+# Glexo's greeting on the staged engine: three story beats (once) then cycling
+# shop nudges that still surface the list/buy/sell commands.
+SHOP_CHAT = {
+    "Glexo Slimslom": {
+        "talk": {
+            "story": [
+                "Glexo's four eyes swivel onto you. \"A Morty. Lemme guess: Rick's got you hauling parts across the multiverse and you're already broke. Seen it a thousand times.\"",
+                "\"Name's Glexo Slimslom. I buy what you looted, I sell what you'll need, and I don't ask where any of it came from. Questions are bad for business.\"",
+                "\"Free advice, kid, the only free thing in here: the junk Rick's collecting is worth more than your whole tab. Don't go flashing your inventory around. People notice.\"",
+            ],
+            "cycle": [
+                "Glexo grunts. \"Whaddya want? `list` what I got, `buy <item>`, or `sell <item>` you don't need. Don't waste my time.\"",
+                "Glexo taps the counter. \"You buyin' or browsin'? `list`, `buy`, `sell`. Clock's runnin', Morty.\"",
+                "Glexo's eyes narrow. \"This ain't a hangout. `list`, `buy`, or `sell`, or beat it, kid.\"",
+            ],
+        },
+    },
+}
+
 # ===== Side quests. Two stages, optional, way funnier than the main plot. Each one pays out a crafting piece you can't get anywhere else. =====
 # Stage one: track down the one-of-a-kind KEY item. It's either on the floor or rotting inside some enemy you gotta kill.
 # Stage two: drag that key to the room I hinted at and do the action there. That
@@ -524,6 +1136,10 @@ class Player:
         self.plumbuses_collected    = 0
         self.mega_seeds_used        = 0
         self.mega_seed_injector_built = False  # Flips True once the Injector is built; after that, Mega Seeds are usable items, not crafting stock.
+        self.npc_chat_progress = {}  # name -> how far through that NPC's pre-quest intro Morty has talked.
+        self.npc_chat_last_end = {}  # name -> last "go see Rick" ending shown, so it doesn't repeat back-to-back.
+        self.chat_stage = {}      # "name:bucket" -> how far through that talk-state's story beats Morty has gotten.
+        self.chat_lastcycle = {}  # "name:bucket" -> last cycling line shown for that state, to avoid back-to-back repeats.
         self.xp_bonus_percent       = 0
         self.current_combat_turn    = 0
         self.meeseeks_attack_doubled = False
@@ -1026,7 +1642,9 @@ class EnhancedGameApp:
         main_quest_items = [q['item'] for q in EXTENDED_QUESTS] + [q['rick_gift'] for q in EXTENDED_QUESTS]
         
         if command == "talk":
-            self.append_colored("Glexo grunts. 'Whaddya want? See what I got with `list`, `buy <item>`, or `sell <item>` what you don't need. Don't waste my time.'\n", "lore")
+            sc = SHOP_CHAT.get("Glexo Slimslom", {})
+            if "talk" in sc: self._staged_chat("Glexo Slimslom:shop_talk", sc["talk"])
+            else: self.append_colored("Glexo grunts. 'Whaddya want? See what I got with `list`, `buy <item>`, or `sell <item>` what you don't need. Don't waste my time.'\n", "lore")
             return
         
         if command == "list":
@@ -2761,8 +3379,9 @@ class EnhancedGameApp:
     def handle_rick_dialog(self, npc):
         p = self.player; step = self._cur_step()
         if step is None:
-            self.append_colored(f'Rick C-137: "OMNI-CORE\'s humming, {self.player.name}. Infinite, guilt-free power. Go enjoy the apocalypse you helped cause."\n', "lore"); return
-        ch = EXTENDED_QUESTS[step["ci"]]; kind = step["kind"]
+            self._staged_chat("Rick:complete", RICK_CHAT["complete"]); return
+        ch = EXTENDED_QUESTS[step["ci"]]; kind = step["kind"]; ci = step["ci"]
+        repl = {"{gift}": ch["rick_gift"], "{character}": ch["character"], "{item}": ch["item"]}
         if kind == "talk_rick":
             if step["ci"] == 0 and not p.objective_shown:
                 self.append_colored("🌀 THE MISSION:\n" + GAME_OBJECTIVE + "\n\n", "quest")
@@ -2773,33 +3392,78 @@ class EnhancedGameApp:
             self.append_colored(f"📦 Rick hands you: {gift}. Take it to {ch['character']}.\n", "success")
             self._advance_step(); self.grant_xp(5, "briefed by Rick"); self.update_info_display(); check_achievements(p, self.world, self)
         elif kind == "deliver_char":
-            self.append_colored(f'Rick: "Still here? Go give that {ch["rick_gift"]} to {ch["character"]}. Chop chop."\n', "lore")
+            self._staged_chat(f"Rick:deliver_char:{ci}", RICK_CHAT["deliver_char"], repl=repl)
         elif kind == "retrieve":
-            self.append_colored(f'Rick: "{ch["riddle_extra"]} Then bring me the {ch["item"]}."\n', "lore")
+            self._staged_chat(f"Rick:retrieve:{ci}", RICK_CHAT["retrieve"], repl=repl)
         elif kind == "deliver_rick":
             if self._find_item_in_list(ch["item"], p.inventory):
-                self.append_colored(f'Rick: "Is that my {ch["item"]}? Hand it over."\n', "quest")
+                self._staged_chat(f"Rick:rick_haveitem:{ci}", RICK_CHAT["rick_haveitem"], tag="quest", repl=repl)
             else:
-                self.append_colored(f'Rick: "Where\'s my {ch["item"]}? {ch["riddle_extra"]}"\n', "lore")
+                self._staged_chat(f"Rick:rick_noitem:{ci}", RICK_CHAT["rick_noitem"], repl=repl)
+
+    def _staged_line(self, key, story, cycle):
+        # Returns the next line for a talk-state: walk 'story' once (one per talk), then
+        # cycle 'cycle' at random with no back-to-back repeat. Progress saved per key.
+        p = self.player
+        if getattr(p, "chat_stage", None) is None: p.chat_stage = {}
+        if getattr(p, "chat_lastcycle", None) is None: p.chat_lastcycle = {}
+        idx = p.chat_stage.get(key, 0)
+        if idx < len(story):
+            p.chat_stage[key] = idx + 1; return story[idx]
+        if not cycle: return story[-1] if story else ""
+        last = p.chat_lastcycle.get(key, -1)
+        choices = [i for i in range(len(cycle)) if i != last] or list(range(len(cycle)))
+        pick = random.choice(choices); p.chat_lastcycle[key] = pick; return cycle[pick]
+
+    def _staged_chat(self, key, data, tag="lore", repl=None):
+        line = self._staged_line(key, data.get("story", []), data.get("cycle", []))
+        if repl:
+            for k, v in repl.items(): line = line.replace(k, v)
+        self.append_colored(line.replace("{pc}", self.player.name) + "\n", tag)
+
+    def _prequest_chat(self, npc):
+        # Talked to a main-quest NPC before Rick sent us here. Walk their personal intro
+        # once (one line per talk), then cycle their three "go see Rick" endings at random,
+        # never repeating the same ending twice in a row.
+        p = self.player
+        data = NPC_PREQUEST_CHAT.get(npc.name)
+        if not data:
+            self.append_colored(f'{npc.name} eyes you. "Rick hasn\'t sent you my way yet, kid. Come back when he does."\n', "lore"); return
+        if getattr(p, "npc_chat_progress", None) is None: p.npc_chat_progress = {}
+        if getattr(p, "npc_chat_last_end", None) is None: p.npc_chat_last_end = {}
+        intro = data["intro"]; idx = p.npc_chat_progress.get(npc.name, 0)
+        if idx < len(intro):
+            line = intro[idx]; p.npc_chat_progress[npc.name] = idx + 1
+        else:
+            endings = data["endings"]; last = p.npc_chat_last_end.get(npc.name, -1)
+            choices = [i for i in range(len(endings)) if i != last] or list(range(len(endings)))
+            pick = random.choice(choices); p.npc_chat_last_end[npc.name] = pick; line = endings[pick]
+        self.append_colored(line.replace("{pc}", p.name) + "\n", "lore")
 
     def handle_chapter_char_dialog(self, npc):
         p = self.player; step = self._cur_step(); ci = npc.quest_idx; ch = EXTENDED_QUESTS[ci]
+        sc = STORY_CHAT.get(npc.name, {})
         if step is None or ci < step["ci"]:
-            self.append_colored(f'{npc.name}: "We\'re square. Tell Rick he still owes me."\n', "lore"); return
+            if "done" in sc: self._staged_chat(f"{npc.name}:done", sc["done"])
+            else: self.append_colored(f'{npc.name}: "We\'re square. Tell Rick he still owes me."\n', "lore")
+            return
         if ci > step["ci"]:
-            self.append_colored(f'{npc.name} eyes you. "Rick hasn\'t sent you my way yet, kid. Come back when he does."\n', "lore"); return
+            self._prequest_chat(npc); return
         kind = step["kind"]
         if kind == "talk_rick":
-            self.append_colored(f'{npc.name}: "Go see Rick first. I don\'t deal with empty-handed errand boys."\n', "lore")
+            self._prequest_chat(npc)
         elif kind == "deliver_char":
             if self._find_item_in_list(ch["rick_gift"], p.inventory):
-                self.append_colored(f'{npc.name}: "You holding something from Rick? Hand it over."\n', "quest")
+                if "arrive" in sc: self._staged_chat(f"{npc.name}:arrive", sc["arrive"], tag="quest", repl={"{gift}": ch["rick_gift"]})
+                else: self.append_colored(f'{npc.name}: "You holding something from Rick? Hand it over."\n', "quest")
             else:
                 self.append_colored(f'{npc.name}: "Rick was supposed to send a {ch["rick_gift"]}. No gift, no help."\n', "lore")
         elif kind == "retrieve":
-            self.append_colored(self._q(ch["char_need"]) + "\n", "quest")
+            if "retrieve" in sc: self._staged_chat(f"{npc.name}:retrieve", sc["retrieve"], tag="quest", repl={"{item}": ch["item"]})
+            else: self.append_colored(self._q(ch["char_need"]) + "\n", "quest")
         elif kind == "deliver_rick":
-            self.append_colored(f'{npc.name}: "You got the {ch["item"]}? That\'s Rick\'s headache now. Go see him."\n', "lore")
+            if "to_rick" in sc: self._staged_chat(f"{npc.name}:to_rick", sc["to_rick"], repl={"{item}": ch["item"]})
+            else: self.append_colored(f'{npc.name}: "You got the {ch["item"]}? That\'s Rick\'s headache now. Go see him."\n', "lore")
 
     def _install_core_part(self, ch):
         p = self.player
@@ -2813,20 +3477,31 @@ class EnhancedGameApp:
         self.update_info_display()
 
     def handle_subquest_dialog(self, npc, room):
-        p = self.player; subq = npc.subqdata
-        p.subquest_met.add(npc.name.lower())
-        if npc.name.lower() in p.subquest_ack:
-            self.append_colored(f'😊 {npc.name}: "Thanks again, {p.name}!"\n', "success"); return
-        need = subq["need_item"]
-        if self._find_item_in_list(need, p.inventory):
-            self.append_colored(f'{npc.name}: {subq["give_line"]}\n', "quest")
+        p = self.player; subq = npc.subqdata; name = npc.name
+        p.subquest_met.add(name.lower())
+        sc = SIDEQUEST_CHAT.get(name, {})
+        if name.lower() in p.subquest_ack:
+            if "done" in sc: self._staged_chat(f"{name}:sq_done", sc["done"], tag="success")
+            else: self.append_colored(f'😊 {name}: "Thanks again, {p.name}!"\n', "success")
+            return
+        if self._find_item_in_list(subq["need_item"], p.inventory):
+            if "have" in sc: self._staged_chat(f"{name}:sq_have", sc["have"], tag="quest")
+            else: self.append_colored(f'{name}: {subq["give_line"]}\n', "quest")
         else:
-            self.append_colored(f"❓ {npc.name}: {subq['lost_line']}\n", "lore")
-            self.append_colored(f"   (Hint: {subq['key_hint']})\n", "quest")
-        p.subquest_heard.add(npc.name.lower())
+            if "need" in sc:
+                key = f"{name}:sq_need"
+                stage = getattr(p, "chat_stage", None) or {}
+                in_cycle = stage.get(key, 0) >= len(sc["need"]["story"])
+                self._staged_chat(key, sc["need"], tag="lore")
+                if in_cycle:
+                    self.append_colored(f"   (Hint: {subq['key_hint']})\n", "quest")
+            else:
+                self.append_colored(f"❓ {name}: {subq['lost_line']}\n", "lore")
+                self.append_colored(f"   (Hint: {subq['key_hint']})\n", "quest")
+        p.subquest_heard.add(name.lower())
         if p.pclass == "Universal Translator" and random.random() < 0.30:
-            if random.choice([True, False]): heal_amount = random.randint(3, 7); p.hp = min(p.max_hp, p.hp + heal_amount); self.append_colored(f"🤝 Your diplomatic charm earns you {heal_amount} HP from {npc.name}!\n", "success")
-            else: charge_gain = random.randint(2, 5); p.charge = min(p.max_charge, p.charge + charge_gain); self.append_colored(f"🤝 Your smooth talk restores {charge_gain} Charge from {npc.name}!\n", "success")
+            if random.choice([True, False]): heal_amount = random.randint(3, 7); p.hp = min(p.max_hp, p.hp + heal_amount); self.append_colored(f"🤝 Your diplomatic charm earns you {heal_amount} HP from {name}!\n", "success")
+            else: charge_gain = random.randint(2, 5); p.charge = min(p.max_charge, p.charge + charge_gain); self.append_colored(f"🤝 Your smooth talk restores {charge_gain} Charge from {name}!\n", "success")
             self.update_info_display()
     def handle_game_completion(self):
         self.append_colored("\n" + "="*60 + "\n", "achievement")
@@ -3355,7 +4030,26 @@ def show_legal_disclaimer(root):
 
 
 if __name__ == "__main__":
+    # Windows taskbar icon fix: declare our AppUserModelID and resolve the icon BEFORE the
+    # first window exists. Windows locks the taskbar button's icon the instant the first
+    # window appears, so doing this later (once the game builds) means run one shows the
+    # default Tk feather and only run two, served from cache, looks right. Setting it here,
+    # ahead of tk.Tk(), is what makes the real icon show on the very first launch.
+    try:
+        if sys.platform.startswith("win"):
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("RickAndMorty.MultiverseMayhem.1.3.0.3")
+    except Exception:
+        pass
+    _boot_icon = os.path.join(sys._MEIPASS, "icon.ico") if hasattr(sys, "_MEIPASS") else os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
+    if not os.path.exists(_boot_icon):
+        _boot_icon = "icon.ico"
     root = tk.Tk()
+    try:
+        if os.path.exists(_boot_icon):
+            root.iconbitmap(default=_boot_icon)
+    except Exception:
+        pass
     # Hide the main window until the legal notice has been acknowledged, so nothing
     # else opens first. Decline = exit before the game ever builds.
     root.withdraw()

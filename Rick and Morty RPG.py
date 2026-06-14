@@ -1884,7 +1884,8 @@ class EnhancedGameApp:
         self.text.tag_config("center", justify="center"); self.text.tag_config("quest", foreground="#FFD700"); self.text.tag_config("combat", foreground="#FF6B6B"); self.text.tag_config("achievement", foreground="#98D8E8")
         self.text.tag_config("lore", foreground="#DDD6FE"); self.text.tag_config("error", foreground="#FF4444"); self.text.tag_config("success", foreground="#4ADE80"); self.text.tag_config("banner", font=("Consolas", 28, "bold"), foreground="#FFD700", justify="center"); self.text.tag_config("intro_text", font=("Consolas", 11), foreground="#DDD6FE", justify="center")
         # Big, loud, bold alert for when a hidden ambusher jumps Morty out of an empty-looking room, so nobody's left going "wait, where did THAT come from?"
-        self.text.tag_config("surprise", font=("Consolas", 16, "bold"), foreground="#FF3B3B", justify="center")
+        # Same red as the rest of the combat text, just bold, and left-justified like everything else.
+        self.text.tag_config("surprise", font=("Consolas", 16, "bold"), foreground="#FF6B6B")
         self.entry = tk.Entry(left_frame, width=80, font=("Consolas", 13), bg="#000000", fg="#FFFFFF", insertbackground="#FFFFFF", disabledbackground="#000000", disabledforeground="#FFFFFF"); self.entry.pack(fill=tk.X, pady=(5, 0))
         self.entry.bind("<Up>", self._entry_arrow_up); self.entry.bind("<Down>", self._entry_arrow_down); self.entry.bind("<Left>", self._entry_arrow_left); self.entry.bind("<Right>", self._entry_arrow_right)
         self._init_smart_completion(); self.entry.bind('<Return>', self.process_command); self.entry.config(state="disabled")

@@ -8,7 +8,7 @@ import string
 import re
 # ===== The version lives HERE and only here. Change this one line to bump the game; the title bar and =====
 # ===== both Windows taskbar IDs all read from it. No more hunting it down in three places, Morty. =====
-GAME_VERSION = "1.4.0.1"
+GAME_VERSION = "1.4.1.0"
 # ===== Utility junk. The little functions that do the boring lifting so the cool code doesn't have to. =====
 def to_letter_number(x, y):
     if not (1 <= x <= 26):
@@ -1889,7 +1889,7 @@ class EnhancedGameApp:
         # Big, loud, bold alert for when a hidden ambusher jumps Morty out of an empty-looking room, so nobody's left going "wait, where did THAT come from?"
         # Same red as the rest of the combat text, just bold, and left-justified like everything else.
         self.text.tag_config("surprise", font=("Consolas", 16, "bold"), foreground="#FF6B6B")
-        self.entry = tk.Entry(left_frame, width=80, font=("Consolas", 13), bg="#000000", fg="#FFFFFF", insertbackground="#FFFFFF", disabledbackground="#000000", disabledforeground="#FFFFFF"); self.entry.pack(fill=tk.X, pady=(5, 0))
+        self.entry = tk.Entry(left_frame, width=80, font=("Consolas", 13), bg="#0a0a0f", fg="#FFFFFF", insertbackground="#FFFFFF", disabledbackground="#0a0a0f", disabledforeground="#FFFFFF"); self.entry.pack(fill=tk.X, pady=(5, 0))
         self.entry.bind("<Up>", self._entry_arrow_up); self.entry.bind("<Down>", self._entry_arrow_down); self.entry.bind("<Left>", self._entry_arrow_left); self.entry.bind("<Right>", self._entry_arrow_right)
         self._init_smart_completion(); self.entry.bind('<Return>', self.process_command); self.entry.config(state="disabled")
         right_frame = tk.Frame(main_frame, width=300); right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(10, 0)); right_frame.pack_propagate(False)
@@ -1909,10 +1909,10 @@ class EnhancedGameApp:
         control_frame.columnconfigure(0, weight=1, uniform="gamerow"); control_frame.columnconfigure(1, weight=1, uniform="gamerow")
         self.root.protocol("WM_DELETE_WINDOW", self._hard_exit)
         self.info_frame = tk.LabelFrame(right_frame, text="Player Info", font=("Arial", 10, "bold")); self.info_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        self.info_text = tk.Text(self.info_frame, height=21, width=30, font=("Consolas", 11), state='disabled', bg='#1a1a1e', fg='#AFFF94'); self.info_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.info_text = tk.Text(self.info_frame, height=21, width=30, font=("Consolas", 11), state='disabled', bg='#0a0a0f', fg='#AFFF94'); self.info_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.info_text.tag_config("lbl", foreground="#AFFF94"); self.info_text.tag_config("val", foreground="#5EEAD4")
         self.minimap_frame = tk.LabelFrame(right_frame, text="Mini Map", font=("Arial", 10, "bold")); self.minimap_frame.pack(fill=tk.X)
-        self.minimap_text = tk.Text(self.minimap_frame, height=12, width=30, font=("Consolas", 16), state='disabled', bg='#0f0f13', fg='#888888'); self.minimap_text.pack(fill=tk.X, padx=5, pady=5)
+        self.minimap_text = tk.Text(self.minimap_frame, height=12, width=30, font=("Consolas", 16), state='disabled', bg='#0a0a0f', fg='#888888'); self.minimap_text.pack(fill=tk.X, padx=5, pady=5)
         # The Player Info and Mini Map panels are read-only displays. Look, don't touch.
         # I rip out the default 'Text' class bindings so they ignore ALL your input: wheel,
         # click, and especially click-drag, which otherwise kicks off Tk's self-rescheduling
@@ -2126,7 +2126,18 @@ class EnhancedGameApp:
             self.text.insert(tk.END, text)
         self.text.see(tk.END)
         self.text.config(state='disabled')
-        
+
+    def _talk_separator(self):
+        # Put a blank line before a new talk reply so successive replies don't run together,
+        # BUT only if there's already text on screen. A freshly cleared screen starts clean,
+        # no awkward leading gap. Also avoids stacking two blank lines if one's already there.
+        try:
+            existing = self.text.get("1.0", tk.END)
+        except Exception:
+            existing = ""
+        if existing.strip() and not existing.endswith("\n\n"):
+            self.append_colored("\n")
+
     def set_button_states(self, menu=False):
         self._menu_active = menu
         if hasattr(self, "_close_completion_popup"): self._close_completion_popup()
@@ -3177,6 +3188,7 @@ class EnhancedGameApp:
                 self._handle_shop_interaction(command, parts)
             elif command == "talk":
                 if not room["npc"]: self.append_colored("🗣️ " + self._quip("no_one") + "\n", "error"); self.root.bell(); return
+                self._talk_separator()
                 npc = room["npc"]
                 if getattr(npc, "is_rick", False): self.handle_rick_dialog(npc)
                 elif npc.is_subquest: self.handle_subquest_dialog(npc, room)

@@ -85,12 +85,6 @@ trying to make a dime. The game even shows you the full legal notice on launch,
 which you should actually read instead of skimming this paragraph like you're
 skimming this one.
 
-## Version
-
-Currently **v1.3.0.3**. The complete, slightly embarrassing development history,
-including the pre-release `0.x` builds where I fixed a bunch of my own bugs, is in
-`CHANGELOG.md`. Don't worry about it.
-
 ## Who did this
 
 Built by Mr5niper5oft. The brilliant narration is me, Rick. The bugs were also

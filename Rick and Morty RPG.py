@@ -6,6 +6,9 @@ from typing import List
 from enum import Enum
 import string
 import re
+# ===== The version lives HERE and only here. Change this one line to bump the game; the title bar and =====
+# ===== both Windows taskbar IDs all read from it. No more hunting it down in three places, Morty. =====
+GAME_VERSION = "1.4.0.1"
 # ===== Utility junk. The little functions that do the boring lifting so the cool code doesn't have to. =====
 def to_letter_number(x, y):
     if not (1 <= x <= 26):
@@ -1823,7 +1826,7 @@ class EnhancedGameApp:
         # A 12 by 12 grid. 144 rooms. Do the math, I already did.
         self.width, self.height = 12, 12
         self.root = root
-        self.root.title("Rick and Morty - Multiverse Mayhem v1.3.0.3")
+        self.root.title(f"Rick and Morty - Multiverse Mayhem v{GAME_VERSION}")
         # Windows slaps the Python interpreter's icon on the TASKBAR by default because it lumps
         # our window in under pythonw.exe. So I declare our own AppUserModelID, which makes Windows
         # treat this like its own real application and finally show OUR icon in the taskbar.
@@ -1831,7 +1834,7 @@ class EnhancedGameApp:
         try:
             if sys.platform.startswith("win"):
                 import ctypes
-                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("RickAndMorty.MultiverseMayhem.1.3.0.3")
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f"RickAndMorty.MultiverseMayhem.{GAME_VERSION}")
         except Exception:
             pass
         # I resolve the window icon once and hang onto it so every popup can reuse it.
@@ -4354,7 +4357,7 @@ if __name__ == "__main__":
     try:
         if sys.platform.startswith("win"):
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("RickAndMorty.MultiverseMayhem.1.3.0.3")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f"RickAndMorty.MultiverseMayhem.{GAME_VERSION}")
     except Exception:
         pass
     _boot_icon = os.path.join(sys._MEIPASS, "icon.ico") if hasattr(sys, "_MEIPASS") else os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")

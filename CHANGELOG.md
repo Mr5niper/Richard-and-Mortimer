@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.4.0.1 - 2026-06-14
+**Hotfix**
+- Fixed the version label. The 1.4.0.0 build was running around calling itself an old version number in the title bar and taskbar. Slapped the right name tag on it. That's the only reason this exists, Morty.
+
 ## v1.4.0.0 - 2026-06-14
 **The talking-and-ambushes update**
 - Everybody in the multiverse learned to actually hold a conversation, and now stuff hides in rooms you already cleared and jumps out at you. Big one.

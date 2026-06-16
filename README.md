@@ -89,3 +89,7 @@ skimming this one.
 
 Built by Mr5niper5oft. The brilliant narration is me, Rick. The bugs were also
 technically me, but we don't talk about those. Wubba lubba dub dub.
+
+The complete, slightly embarrassing development history, including the pre-release
+`0.x` builds where I fixed a bunch of my own bugs, is in `CHANGELOG.md`. Don't
+worry about it.

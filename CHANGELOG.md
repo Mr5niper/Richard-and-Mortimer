@@ -1,10 +1,13 @@
 # Changelog
 
 ## v1.4.1.0 - 2026-06-15
-**The paint-and-spacing update**
+**The paint, spacing, and git-good update**
 - Made all the black backgrounds actually the same black. The terminal, the command line you type in, the player info panel, and the mini map were each running a slightly different shade of "black" like they didn't know each other. Lined them all up to the main window's `#0a0a0f` so the whole thing looks like one machine instead of four that got shipped together by accident.
 - Talk replies don't pile on top of each other anymore. Keep chatting and each new response now gets a blank line above it so you can tell where one ends and the next begins. It only does this when there's already text on screen, so a fresh screen still starts clean at the top, and it won't stack two gaps if one's already there. I'm tidy like that.
 - Fixed the README still bragging it was v1.3.0.3 from three updates ago. Took the stale version line out back.
+- Somebody figured out you could mind-wipe a couple times, echo-scream to finish anybody off, then level up and get a free full heal on both bars, over and over, forever. Congratulations, you broke my game. So I fixed it. Leveling up doesn't top you all the way off anymore. You get 35 percent of each bar back and you EARN the rest like everybody else. Kills used to be a free spa day. Now they cost you.
+- Echo scream isn't free anymore either. It costs Charge now, not just a little HP, so you can't chain the wipe-scream combo every single fight without thinking about your meter. Manage your resources, Morty. It's called strategy.
+- Cranked up the difficulty across the entire ladder. Easy's still easy, Normal actually means it now, Hard bites, and Nightmare is genuinely brutal, but a good Morty can still win it, which is the whole point. Monsters hit harder and soak more, and your starting cushion got thinner.
 
 ## v1.4.0.1 - 2026-06-14
 **Hotfix**

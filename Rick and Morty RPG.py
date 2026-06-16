@@ -1100,16 +1100,18 @@ DIRECT_ALIAS = {
     "showmewhatyougot": "show_me_what_you_got",
 }
 DIFFICULTY_MODIFIERS = {
-    DifficultyLevel.EASY: {"monster_hp_mult": 0.7, "monster_damage_mult": 0.8, "hint_clarity": 1.5, "starting_hp_bonus": 10, "starting_charge_bonus": 5},
-    DifficultyLevel.NORMAL: {"monster_hp_mult": 1.0, "monster_damage_mult": 1.0, "hint_clarity": 1.0, "starting_hp_bonus": 0, "starting_charge_bonus": 0},
-    DifficultyLevel.HARD: {"monster_hp_mult": 1.3, "monster_damage_mult": 1.2, "hint_clarity": 0.7, "starting_hp_bonus": -5, "starting_charge_bonus": -2},
-    DifficultyLevel.NIGHTMARE: {"monster_hp_mult": 1.8, "monster_damage_mult": 1.5, "hint_clarity": 0.5, "starting_hp_bonus": -10, "starting_charge_bonus": -5}
+    # Cranked the whole ladder up a notch. Now that leveling doesn't hand you a free full heal,
+    # the monsters get to actually mean it. Nightmare is brutal on purpose, but a good Morty can still win.
+    DifficultyLevel.EASY: {"monster_hp_mult": 0.85, "monster_damage_mult": 0.9, "hint_clarity": 1.5, "starting_hp_bonus": 6, "starting_charge_bonus": 3},
+    DifficultyLevel.NORMAL: {"monster_hp_mult": 1.15, "monster_damage_mult": 1.15, "hint_clarity": 1.0, "starting_hp_bonus": -2, "starting_charge_bonus": 0},
+    DifficultyLevel.HARD: {"monster_hp_mult": 1.5, "monster_damage_mult": 1.4, "hint_clarity": 0.7, "starting_hp_bonus": -7, "starting_charge_bonus": -3},
+    DifficultyLevel.NIGHTMARE: {"monster_hp_mult": 2.0, "monster_damage_mult": 1.65, "hint_clarity": 0.5, "starting_hp_bonus": -12, "starting_charge_bonus": -6}
 }
 ATTACK_COST = {
     "plasma_blast":         {"hp": 0, "charge": 4, "xp": 0},
     "mind_wipe":            {"hp": 0, "charge": 5, "xp": 0},
     "portal_jump":          {"hp": 0, "charge": 10, "xp": 0},
-    "echo_scream":          {"hp": 2, "charge": 0, "xp": 0},
+    "echo_scream":          {"hp": 2, "charge": 3, "xp": 0},
     "show_me_what_you_got": {"hp": 0, "charge": 7, "xp": 0},
 }
 # A basic swing always lands for at least this much, before any gear or level bonus. I set a floor
@@ -2131,8 +2133,10 @@ class EnhancedGameApp:
         # Put a blank line before a new talk reply so successive replies don't run together,
         # BUT only if there's already text on screen. A freshly cleared screen starts clean,
         # no awkward leading gap. Also avoids stacking two blank lines if one's already there.
+        # NOTE: Tk's Text.get always tacks on an extra trailing newline that isn't really in
+        # the widget, so we drop exactly one trailing "\n" before inspecting.
         try:
-            existing = self.text.get("1.0", tk.END)
+            existing = self.text.get("1.0", "end-1c")
         except Exception:
             existing = ""
         if existing.strip() and not existing.endswith("\n\n"):
@@ -2215,9 +2219,14 @@ class EnhancedGameApp:
         self.append_colored(msg + "\n", "success")
         if p.level > old_level:
             self.root.bell()
-            inc = p.level - old_level; p.base_damage_bonus += inc; p.max_charge += 2 * inc; p.charge = p.max_charge; p.max_hp += 2 * inc; p.hp = p.max_hp
+            inc = p.level - old_level; p.base_damage_bonus += inc; p.max_charge += 2 * inc; p.max_hp += 2 * inc
+            # Leveling used to top you ALL the way off, HP and Charge both, which meant every kill
+            # was a free spa day and you could mind-wipe/echo-scream forever without ever running dry.
+            # Not anymore, Morty. You get a cut back, 35 percent of each bar, and you EARN the rest.
+            heal_hp = max(1, int(p.max_hp * 0.35)); heal_charge = max(1, int(p.max_charge * 0.35))
+            p.hp = min(p.max_hp, p.hp + heal_hp); p.charge = min(p.max_charge, p.charge + heal_charge)
             self._recalc_passives()
-            self.append_colored(f"💫 Level UP! Now level {p.level}. Damage +{inc}, Max HP +{2*inc}, Max Charge +{2*inc} (fully restored).\n", "achievement")
+            self.append_colored(f"💫 Level UP! Now level {p.level}. Damage +{inc}, Max HP +{2*inc}, Max Charge +{2*inc}. Recovered {heal_hp} HP and {heal_charge} Charge.\n", "achievement")
         self.update_info_display(); check_achievements(self.player, self.world, self)
     def _consume_resources(self, charge=0, hp=0, xp=0) -> bool:
         p = self.player

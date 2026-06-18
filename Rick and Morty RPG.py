@@ -3977,6 +3977,17 @@ class EnhancedGameApp:
         self.append_colored(f"   Gadgets crafted: {len(CRAFTING_RECIPES)}/{len(CRAFTING_RECIPES)}\n\n")
         self.append_centered("YOU 100%'D THE MULTIVERSE, MORTY.\n", "banner")
         self.append_centered("--- THE END. NOW GO TOUCH SOME GRASS. ---\n", "banner")
+        # Game's over, so sweep out every hidden ambusher. No point leaving one lurking to trap Morty
+        # in a fight he can't win or escape after the credits roll. They never counted for anything
+        # anyway, so once the final stats are up, they're gone.
+        removed = 0
+        for rm in self.world.values():
+            mon = rm.get("monster")
+            if mon and getattr(mon, "hidden", False):
+                rm["monster"] = None; removed += 1
+        if removed:
+            self.append_colored(f"\n(The {removed} lurking ambusher(s) skitter off into the dark. Nothing left to fight.)\n", "lore")
+        self.update_enhanced_map()
         try: self.entry.config(state="disabled")
         except Exception: pass
     def _apply_post_craft_effects(self, recipe_name):

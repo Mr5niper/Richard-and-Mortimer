@@ -8,7 +8,7 @@ import string
 import re
 # ===== The version lives HERE and only here. Change this one line to bump the game; the title bar and =====
 # ===== both Windows taskbar IDs all read from it. No more hunting it down in three places, Morty. =====
-GAME_VERSION = "1.4.1.0"
+GAME_VERSION = "1.4.2.0"
 # ===== Utility junk. The little functions that do the boring lifting so the cool code doesn't have to. =====
 def to_letter_number(x, y):
     if not (1 <= x <= 26):
@@ -53,6 +53,8 @@ class Monster:
     stun_turns: int = 0
     weakened_next_attack: bool = False
     hidden: bool = False       # A hidden ambusher I drop in after kills. No map marker, only ever coughs up Credits, never counts toward the achievement or 100 percent.
+    level_scaled: bool = False  # Set once we've scaled this thing to the player's level, so it doesn't keep compounding every round.
+    echo_cd: bool = False        # True the turn AFTER an echo scream, so you can't spam it back to back.
     def __post_init__(self):
         if self.loot is None:
             self.loot = []
@@ -911,18 +913,18 @@ MONSTERS = [
         special_attack_chance=0.25,
         special_attack_name="Suppressing Fire"
     ),
-    Monster("Sentient Furniture", 20, 20, 6, ["Upholstery Scrap", "Energy Cell"], "A living piece of furniture, easily offended and surprisingly durable."),
+    Monster("Sentient Furniture", 20, 20, 6, ["Upholstery Scrap", "Energy Cell"], "A living piece of furniture, easily offended and surprisingly durable.", special_attack_chance=0.25, special_attack_name="Wild Swing"),
     Monster(
         "Zeep's Microverse Sentry", 25, 25, 8,
         ["Microverse Battery", "Healing Serum"],
         "A hulking security construct Zeep built to guard his microverse, all blades and contempt.",
-        special_attack_chance=0.0,
-        special_attack_name="",
+        special_attack_chance=0.3,
+        special_attack_name="Microverse Override",
         is_boss=True
     ),
-    Monster("Death Stalker", 18, 18, 7, ["Wasteland Metal", "Energy Cell"], "A hulking, mutated beast from the Wasteland Dimension, always hunting."),
-    Monster("Council of Ricks Drone", 12, 12, 4, ["Drone Circuitry", "Healing Serum"], "An automated defense unit, programmed to protect the Council at all costs."),
-    Monster("Mr. Frundles", 30, 30, 9, ["Parasitic Spore", "Mimic Essence", "Energy Cell"], "A highly infectious creature that spreads joy and horror simultaneously."),
+    Monster("Death Stalker", 18, 18, 7, ["Wasteland Metal", "Energy Cell"], "A hulking, mutated beast from the Wasteland Dimension, always hunting.", special_attack_chance=0.3, special_attack_name="Wild Swing"),
+    Monster("Council of Ricks Drone", 12, 12, 4, ["Drone Circuitry", "Healing Serum"], "An automated defense unit, programmed to protect the Council at all costs.", special_attack_chance=0.25, special_attack_name="Rattling Blow"),
+    Monster("Mr. Frundles", 30, 30, 9, ["Parasitic Spore", "Mimic Essence", "Energy Cell"], "A highly infectious creature that spreads joy and horror simultaneously.", special_attack_chance=0.35, special_attack_name="Infectious Spread"),
     Monster(
         "Giant Head (Cromulon)", 35, 35, 10,
         ["Interdimensional Song", "Cosmic Dust", "Healing Serum"],
@@ -931,8 +933,8 @@ MONSTERS = [
         special_attack_name="SHOW ME WHAT YOU GOT",
         is_boss=True
     ),
-    Monster("Morty Jr.", 10, 10, 3, ["Gazorpian Genes", "Youthful Rage", "Energy Cell"], "A hot-headed Gazorpazorpian, prone to lashing out when provoked."),
-    Monster("Tammy Gueterman", 22, 22, 7, ["Federation Agent ID", "Birdperson Feather", "Healing Serum"], "A ruthless Federation agent, and a tragic figure in love with Birdperson."),
+    Monster("Morty Jr.", 10, 10, 3, ["Gazorpian Genes", "Youthful Rage", "Energy Cell"], "A hot-headed Gazorpazorpian, prone to lashing out when provoked.", special_attack_chance=0.3, special_attack_name="Gazorpian Tantrum"),
+    Monster("Tammy Gueterman", 22, 22, 7, ["Federation Agent ID", "Birdperson Feather", "Healing Serum"], "A ruthless Federation agent, and a tragic figure in love with Birdperson.", special_attack_chance=0.3, special_attack_name="Federation Charm"),
     Monster(
         "Mr. Nimbus", 28, 28, 8,
         ["Ocean's Trident", "King's Crown", "Energy Cell"],
@@ -940,10 +942,10 @@ MONSTERS = [
         special_attack_chance=0.3,
         special_attack_name="Summon Police"
     ),
-    Monster("Planetina's Minion", 16, 16, 5, ["Eco-Logic Circuit", "Elemental Shard", "Energy Cell"], "A small, environmentally-conscious but fierce defender of Planetina."),
-    Monster("Butter Robot's Vengeance", 8, 8, 3, ["Butter Grease", "Existential Dread", "Healing Serum"], "A rogue Butter Robot, fueled by a purpose of pure spite."),
-    Monster("Gotron Drone", 17, 17, 6, ["Gotron Component", "Mecha-Servo", "Energy Cell"], "A modular robot designed for combining into a giant mech, but still dangerous alone."),
-    Monster("Unity (Possessed Host)", 28, 28, 8, ["Hive Mind Fragment", "Controlled Will", "Energy Cell"], "A member of Unity's collective, acting against its true will."),
+    Monster("Planetina's Minion", 16, 16, 5, ["Eco-Logic Circuit", "Elemental Shard", "Energy Cell"], "A small, environmentally-conscious but fierce defender of Planetina.", special_attack_chance=0.3, special_attack_name="Eco Lecture"),
+    Monster("Butter Robot's Vengeance", 8, 8, 3, ["Butter Grease", "Existential Dread", "Healing Serum"], "A rogue Butter Robot, fueled by a purpose of pure spite.", special_attack_chance=0.3, special_attack_name="Existential Crisis"),
+    Monster("Gotron Drone", 17, 17, 6, ["Gotron Component", "Mecha-Servo", "Energy Cell"], "A modular robot designed for combining into a giant mech, but still dangerous alone.", special_attack_chance=0.3, special_attack_name="Mecha Combine"),
+    Monster("Unity (Possessed Host)", 28, 28, 8, ["Hive Mind Fragment", "Controlled Will", "Energy Cell"], "A member of Unity's collective, acting against its true will.", special_attack_chance=0.3, special_attack_name="Hive Assimilation"),
     Monster(
         "Fart (Cromulon Form)", 40, 40, 12,
         ["Gas Cloud Essence", "Telepathic Gem", "Energy Cell"],
@@ -952,7 +954,7 @@ MONSTERS = [
         special_attack_name="Telepathic Assault",
         is_boss=True
     ),
-    Monster("Conspiracy Morty", 20, 20, 6, ["Conspiracy Theory", "Tin Foil Hat", "Healing Serum"], "A Morty who knows too much, always muttering about the truth behind the Ricks."),
+    Monster("Conspiracy Morty", 20, 20, 6, ["Conspiracy Theory", "Tin Foil Hat", "Healing Serum"], "A Morty who knows too much, always muttering about the truth behind the Ricks.", special_attack_chance=0.3, special_attack_name="Tinfoil Rant"),
 ]
 # ===== The hidden ambushers. =====
 # Brand-new nasties from around the multiverse, none of them already in MONSTERS above, all of them
@@ -1193,6 +1195,13 @@ class Player:
         self.current_combat_turn    = 0
         self.meeseeks_attack_doubled = False
         self.stunned_for_next_turn = False  # For stunning Mr. Nimbus. He runs the police, you know.
+        # New combat statuses the monsters can lay on you. All of them tick DOWN and expire, on purpose,
+        # so nothing locks you in a death spiral. Struggle, yes. Unwinnable, no.
+        self.damage_debuff_turns = 0   # While > 0, your hits are weaker. Counts down each combat turn.
+        self.dot_turns = 0             # Damage over time (poison/infection/etc). Ticks at turn start.
+        self.dot_damage = 0            # How much the DoT does per tick.
+        self.dot_label = ""            # Flavor name for whatever's eating you alive.
+        self.stun_immune_next = False  # After a stun resolves, you shrug off the next one. No stun-locking.
         self.base_armor = 0
         self.base_damage_bonus = 0
         self.base_armor += race_data.get("armor_bonus", 0)
@@ -1452,11 +1461,22 @@ def generate_enhanced_game(width, height, difficulty=DifficultyLevel.NORMAL,
     weights = [max(1, 40 - m.max_hp) for m in regular_monsters]
 
     def scale_monster(mon):
+        # ===== BALANCE METRIC BASIS (the static numbers all tuning is measured against) =====
+        # Player damage/turn: base 5 + level + gear (gadget/attachment add up to +4 dmg). Plasma blast ~2x,
+        #   echo scream 2 strikes (then 1-turn cooldown).
+        # Consumables, FIXED real values: Healing Serum = 10 HP (15 w/ Dark Matter Cell, +5 w/ Plumbus Pro);
+        #   Energy Cell = 15 Charge (20 w/ Dark Matter Cell); Fleeb = 75; Plumbus Repair Kit = full HP+Charge.
+        # Expected combat stock used for balancing a fight: ~4 Healing Serums and ~3 Energy Cells.
+        # Tuned so: trash = warm-up, mid-tier elites = real fights, named bosses = hard, beat them with
+        #   smart consumable use / a tanky loadout / the Repair Kit. Numbers below assume a GEARED Morty.
+        spread = max(0.85, 1.0 + (mon.max_hp - 20) * 0.01)
+        hp = int(mon.max_hp * 1.4 * spread * diff_mod["monster_hp_mult"])
+        dmg = int(mon.damage * 1.3 * (1.0 + (spread - 1.0) * 0.5) * diff_mod["monster_damage_mult"])
         return Monster(
             mon.name,
-            int(mon.hp * diff_mod["monster_hp_mult"]),
-            int(mon.max_hp * diff_mod["monster_hp_mult"]),
-            int(mon.damage * diff_mod["monster_damage_mult"]),
+            max(1, hp),
+            max(1, hp),
+            max(1, dmg),
             mon.loot.copy(),
             mon.description,
             mon.special_attack_chance,
@@ -2194,9 +2214,23 @@ class EnhancedGameApp:
             return True
         return False
         
+    def _is_crafting_material(self, item_name):
+        # ONE place decides what's a crafting material. A Mega Seed is a crafting ingredient ONLY until
+        # the injector exists. After that it's a usable item, full stop, and nothing in the game gets to
+        # call it crafting material again. This is the actual fix: stop classifying it as a part.
+        if item_name == "Mega Seed" and "Mega Seed Injector" in self.player.inventory:
+            return False
+        return any(item_name in r["materials"] for r in CRAFTING_RECIPES.values())
+
     def _recalc_passives(self):
         if not self.player: return
         p = self.player; p.item_armor_bonus = 0; p.item_damage_bonus = 0; p.unity_mind_shield_active = False; p.plumbus_pro_active = False; p.portal_gun_no_charge_cost = False; p.xp_bonus_active = False; p.xp_bonus_percent = 0
+        # THE global Mega Seed rule, runs on every recalc, no exceptions: if the injector is in your
+        # inventory, then a Mega Seed belongs in your inventory, not the crafting parts. Move it. Always.
+        if "Mega Seed Injector" in p.inventory:
+            p.mega_seed_injector_built = True
+            while "Mega Seed" in p.crafting_materials:
+                p.crafting_materials.remove("Mega Seed"); p.inventory.append("Mega Seed")
         if "Unity's Mind Shield" in p.inventory: p.item_armor_bonus += 4; p.unity_mind_shield_active = True
         if "Butter Robot" in p.inventory: p.item_damage_bonus += 2
         if any(a.name == "Plumbus Pro" and a.unlocked for a in ACHIEVEMENTS): p.plumbus_pro_active = True
@@ -2212,7 +2246,15 @@ class EnhancedGameApp:
         if amount <= 0 or not self.player: return
         p = self.player
         if p.xp_bonus_active: amount = int(amount * (1 + p.xp_bonus_percent / 100))
-        old_level = p.level; p.xp += amount; p.level = p.xp // 50 + 1
+        old_level = p.level; p.xp += amount
+        # Escalating curve, Morty, not that flat "ding every kill" garbage from before. Each level
+        # costs more than the last: cumulative XP for level N is 25*(N-1)*N. So L2 is 50, L3 is 150,
+        # L5 is 500, L10 is 2250. You level fast early because that feels good, then it slows down so
+        # by the back half you actually have to EARN it instead of tripping over a level every fight.
+        lvl = 1
+        while 25 * lvl * (lvl + 1) <= p.xp:
+            lvl += 1
+        p.level = lvl
         msg = f"🌀 You gain {amount} XP"
         if source: 
             msg += f"  ({source})"
@@ -2908,6 +2950,32 @@ class EnhancedGameApp:
         p = self.player
         combat_log = []   # Always initialize it. Don't make me explain why.
 
+        # ===== Level-scaling: monsters keep pace with you so you can't just outlevel the whole game. =====
+        # Done ONCE per monster (the flag stops it compounding every round). Above level 1, each player
+        # level adds +5% HP and +3.5% damage to whatever this thing already had, so the world keeps pace
+        # with you instead of becoming a petting zoo, without snowballing into an unwinnable wall.
+        if not getattr(monster, "level_scaled", False) and p.level > 1:
+            lv = p.level - 1
+            hp_scale = 1.0 + 0.05 * lv
+            dmg_scale = 1.0 + 0.035 * lv
+            monster.max_hp = max(1, int(monster.max_hp * hp_scale))
+            monster.hp = max(1, int(monster.hp * hp_scale))
+            monster.damage = max(1, int(monster.damage * dmg_scale))
+            monster.level_scaled = True
+
+        # ===== Status ticks at the top of the round: poison eats you, debuffs count down. =====
+        if p.dot_turns > 0:
+            tick = max(1, p.dot_damage)
+            p.hp -= tick
+            combat_log.append(f"🤢 {p.dot_label or 'Something nasty'} eats at you for {tick} damage. (Your HP: {max(p.hp,0)}/{p.max_hp})")
+            p.dot_turns -= 1
+            if p.dot_turns == 0:
+                p.dot_damage = 0; p.dot_label = ""
+            if p.hp <= 0:
+                combat_log.append("You are defeated!")
+                for line in combat_log: self.append_colored(line + "\n", "combat")
+                p.deaths += 1; self.update_info_display(); self._check_if_dead(); return
+
         # ===== You hitting the monster. Could be several strikes in one turn. =====
         if p.stunned_for_next_turn:
             p.stunned_for_next_turn = False
@@ -2919,6 +2987,10 @@ class EnhancedGameApp:
                 base_player_attack = PLAYER_BASE_DAMAGE + p.damage_bonus + random.randint(-1, 1)
                 if damage_override is not None:
                     base_player_attack = damage_override
+                # If a monster weakened you (Tammy's charm, a parasite, whatever), your hits land softer
+                # until it wears off. The debuff ticks down once per round, handled below.
+                if p.damage_debuff_turns > 0:
+                    base_player_attack = max(1, int(base_player_attack * 0.6))
                 dmg_to_mon = max(1, base_player_attack)
                 monster.hp -= dmg_to_mon
                 combat_log.append(
@@ -3024,24 +3096,94 @@ class EnhancedGameApp:
                         f"🚨 {monster.name} uses {monster.special_attack_name}!"
                     )
                     special_damage = monster.damage
-                    if monster.special_attack_name == "Suppressing Fire":
+                    sn = monster.special_attack_name
+
+                    # Small helper so no stun can ever chain two turns in a row. If you're already
+                    # flagged immune, the stun fizzles into a glancing hit instead. Struggle, not lockdown.
+                    def _try_stun():
+                        if getattr(p, "stun_immune_next", False):
+                            combat_log.append("   ...but you shake it off before it can pin you twice in a row.")
+                            p.stun_immune_next = False
+                            return False
+                        p.stunned_for_next_turn = True
+                        p.stun_immune_next = True
+                        return True
+
+                    # ===== Existing four =====
+                    if sn == "Suppressing Fire":
                         special_damage = int(monster.damage * 1.5)
                         combat_log.append("   It lays down a barrage of blaster fire!")
-                    elif monster.special_attack_name == "SHOW ME WHAT YOU GOT":
-                        # Normal damage, but it drains your Charge. Power costs.
-                        combat_log.append("   A psychic shockwave smashes into your brain!")
-                        drain = 5
-                        old_charge = p.charge
-                        p.charge = max(0, p.charge - drain)
-                        if p.charge < old_charge:
-                            combat_log.append(f"   Your Charge drops by {drain}!")
-                    elif monster.special_attack_name == "Telepathic Assault":
+                    elif sn == "SHOW ME WHAT YOU GOT":
+                        combat_log.append("   'SHOW ME WHAT YOU GOT!' A psychic shockwave smashes into your brain!")
+                        drain = 5; old_charge = p.charge; p.charge = max(0, p.charge - drain)
+                        if p.charge < old_charge: combat_log.append(f"   Your Charge drops by {drain}!")
+                    elif sn == "Telepathic Assault":
                         special_damage = int(monster.damage * 0.5)
                         combat_log.append("   Its thoughts invade your mind, making you dizzy!")
-                    elif monster.special_attack_name == "Summon Police":
+                    elif sn == "Summon Police":
                         special_damage = int(monster.damage * 0.8)
-                        combat_log.append("   'I control the police!' he bellows. You're suddenly being arrested.")
-                        p.stunned_for_next_turn = True
+                        combat_log.append("   'I CONTROL the police!' he bellows. You're suddenly being arrested.")
+                        _try_stun()
+                    # ===== Iconic bespoke specials =====
+                    elif sn == "Existential Crisis":  # Butter Robot
+                        special_damage = max(1, int(monster.damage * 0.4))
+                        combat_log.append("   'What is my purpose?' it whimpers. The sheer despair makes your arms heavy.")
+                        if p.damage_debuff_turns <= 0:
+                            p.damage_debuff_turns = 2
+                            combat_log.append("   Your swings go limp for a couple turns. Pass the butter.")
+                    elif sn == "Infectious Spread":  # Mr. Frundles
+                        special_damage = int(monster.damage * 0.7)
+                        combat_log.append("   'I'm Mr. Frundles!' It nicks you and something starts spreading.")
+                        if p.dot_turns <= 0:
+                            p.dot_turns = 3; p.dot_damage = max(2, int(monster.damage * 0.3)); p.dot_label = "Frundles infection"
+                            combat_log.append("   You're infected. This is gonna keep hurting, Morty.")
+                    elif sn == "Gazorpian Tantrum":  # Morty Jr.
+                        special_damage = int(monster.damage * 1.6)
+                        combat_log.append("   'I AM A PERSON!' Morty Jr. flies into a full Gazorpian rage and clobbers you.")
+                    elif sn == "Federation Charm":  # Tammy
+                        special_damage = int(monster.damage * 0.6)
+                        combat_log.append("   'Oh my god, you totally fell for it.' Tammy's whole nice-girl act throws you off your game.")
+                        if p.damage_debuff_turns <= 0:
+                            p.damage_debuff_turns = 2
+                            combat_log.append("   You're rattled. Your damage drops for a couple turns.")
+                    elif sn == "Hive Assimilation":  # Unity
+                        combat_log.append("   'We could be so good together.' Unity's collective tries to fold you in, and siphons your focus.")
+                        drain = 6; old = p.charge; p.charge = max(0, p.charge - drain)
+                        if p.charge < old: combat_log.append(f"   Your Charge drains by {drain} into the hive!")
+                        special_damage = int(monster.damage * 0.7)
+                    elif sn == "Mecha Combine":  # Gotron Drone
+                        special_damage = int(monster.damage * 1.4)
+                        combat_log.append("   The drone snaps into partial Gotron config and comes down on you like a small building.")
+                    elif sn == "Tinfoil Rant":  # Conspiracy Morty
+                        special_damage = int(monster.damage * 0.5)
+                        combat_log.append("   'The Ricks are watching, man! Wake UP!' His rambling actually distracts YOU more than him.")
+                        if random.random() < 0.5 and not getattr(p, "stun_immune_next", False):
+                            _try_stun()
+                            combat_log.append("   You lose a turn just trying to follow his logic.")
+                    elif sn == "Eco Lecture":  # Planetina's Minion
+                        special_damage = int(monster.damage * 0.6)
+                        combat_log.append("   It guilt-trips you about carbon emissions mid-swing. Weirdly effective.")
+                        if p.damage_debuff_turns <= 0:
+                            p.damage_debuff_turns = 1
+                            combat_log.append("   You feel bad enough to pull your next hit.")
+                    elif sn == "Microverse Override":  # Zeep's Sentry (boss)
+                        special_damage = int(monster.damage * 1.3)
+                        combat_log.append("   Zeep's sentry reroutes its whole microverse's power into one contemptuous strike.")
+                        if p.charge > 0:
+                            drain = 4; p.charge = max(0, p.charge - drain)
+                            combat_log.append(f"   It shorts out {drain} of your Charge for good measure.")
+                    # ===== Shared generic specials (the no-name drones and brutes) =====
+                    elif sn == "Wild Swing":
+                        special_damage = int(monster.damage * 1.4)
+                        combat_log.append("   It throws everything into one reckless haymaker.")
+                    elif sn == "Rattling Blow":
+                        special_damage = int(monster.damage * 0.9)
+                        combat_log.append("   A jarring hit that leaves your ears ringing.")
+                        if random.random() < 0.4: _try_stun()
+                    elif sn == "Cheap Shot":
+                        special_damage = int(monster.damage * 0.7)
+                        combat_log.append("   A dirty little jab where it counts.")
+                        if p.damage_debuff_turns <= 0: p.damage_debuff_turns = 1
                     # End of the specials.
                     dmg_to_player = max(
                         1, special_damage + random.randint(-1, 1) - total_armor
@@ -3059,6 +3201,11 @@ class EnhancedGameApp:
                 if p.hp <= 0:
                     combat_log.append("You are defeated!")
                     p.deaths += 1
+        # The weaken debuff counts down once per round it survived to the end of. When it expires, say so.
+        if p.damage_debuff_turns > 0:
+            p.damage_debuff_turns -= 1
+            if p.damage_debuff_turns == 0:
+                combat_log.append("💪 You shake off the funk. Your hits are back to full strength.")
         # Print the log and refresh the UI, one line at a time.
         for line in combat_log:
             self.append_colored(line + "\n", "combat")
@@ -3216,8 +3363,18 @@ class EnhancedGameApp:
                 # but nothing in the world, NPCs, or quests actually changes. Swing at ghosts, sure.
                 self._comedic_whiff(command, room); return
             cost = ATTACK_COST[command]
+            # Echo scream cooldown: it's a two-hit finisher, not a spam button. If you screamed last
+            # turn, the move's on cooldown and you have to do literally anything else for one turn.
+            # We check this BEFORE charging you, so a blocked scream doesn't cost you a thing.
+            if command == "echo_scream" and getattr(monster, "echo_cd", False):
+                self.append_colored("🗯️ Your throat's still raw from the last echo scream. Cooldown, Morty. Do something else this turn.\n", "error"); self.root.bell(); return
             if not self._consume_resources(charge=cost["charge"], hp=cost["hp"], xp=cost["xp"]):
                 return  # Couldn't afford it, so no attack happens. Broke, Morty.
+            # Any move that isn't an echo scream clears the cooldown; the scream itself sets it.
+            if command == "echo_scream":
+                monster.echo_cd = True
+            else:
+                monster.echo_cd = False
             if command == "plasma_blast":
                 self.handle_combat(monster, damage_override=PLAYER_BASE_DAMAGE * 2 + p.damage_bonus + random.randint(0, 2))
             elif command == "mind_wipe":
@@ -3232,6 +3389,7 @@ class EnhancedGameApp:
         elif command == "attack":
             monster = room.get("monster")
             if monster:
+                monster.echo_cd = False  # A normal swing counts as "something else", clears the scream cooldown.
                 self.handle_combat(monster)
                 return
             else:
@@ -3477,9 +3635,8 @@ class EnhancedGameApp:
             self.grant_xp(1, "collected Federation Credits")
             check_achievements(self.player, self.world, self)
             return
-        is_material = any(item_name in r["materials"] for r in CRAFTING_RECIPES.values())
-        if item_name == "Mega Seed" and getattr(self.player, "mega_seed_injector_built", False): self.player.inventory.append(item_name)
-        elif is_material: self.player.crafting_materials.append(item_name)
+        is_material = self._is_crafting_material(item_name)
+        if is_material: self.player.crafting_materials.append(item_name)
         else: self.player.inventory.append(item_name)
         room["items"].remove(item_name); self._strip_found_sentence(room, item_name); self.player.total_items_collected += 1
         is_main_quest_item = item_name in [q["item"] for q in EXTENDED_QUESTS]
@@ -3830,16 +3987,9 @@ class EnhancedGameApp:
         p = self.player
         if recipe_name == "Mega Seed Injector":
             p.max_charge += 10; p.charge = p.max_charge; p.hp = max(1, p.hp - 5); p.mega_seeds_used += 1
+            p.mega_seed_injector_built = True
             self.append_colored("🧠 Mega Seed Injector boosts max charge by 10 but causes nausea (lose 5 HP)!\n", "achievement")
-            if not getattr(p, "mega_seed_injector_built", False):
-                p.mega_seed_injector_built = True
-                moved = 0
-                while "Mega Seed" in p.crafting_materials:
-                    p.crafting_materials.remove("Mega Seed"); p.inventory.append("Mega Seed"); moved += 1
-                if moved:
-                    self.append_colored(f"🌱 Injector online. Your {moved} leftover Mega Seed(s) are now usable items, moved to your inventory.\n", "success")
-                else:
-                    self.append_colored("🌱 Injector online. Mega Seeds now count as usable items, not crafting parts, from here on.\n", "lore")
+            self.append_colored("🌱 Injector online. Mega Seeds are usable items now, not crafting parts.\n", "lore")
         elif recipe_name == "Interdimensional Goggles":
             for pos, rm in self.world.items():
                 if rm.get("npc") or rm.get("monster") or rm.get("items") or rm.get("motif") is not None: rm["visited"] = True
@@ -4041,7 +4191,16 @@ class EnhancedGameApp:
     
     # ===== The rest of the UI and logic methods. Odds and ends. =====
     def show_inventory(self):
-        p = self.player; quest_items_set = {q["item"] for q in EXTENDED_QUESTS} | {q["rick_gift"] for q in EXTENDED_QUESTS}; subquest_items_set = {s["key_item"] for s in EXTENDED_SUBQUESTS} | {s["need_item"] for s in EXTENDED_SUBQUESTS}; crafting_materials_set = set(mat for rec in CRAFTING_RECIPES.values() for mat in rec["materials"])
+        p = self.player
+        # GLOBAL RULE, no flags, no conditions: injector in inventory means Mega Seeds live in inventory.
+        # Physically MOVE them out of crafting parts right here, every time you open your bag.
+        if "Mega Seed Injector" in p.inventory:
+            p.mega_seed_injector_built = True
+            while "Mega Seed" in p.crafting_materials:
+                p.crafting_materials.remove("Mega Seed"); p.inventory.append("Mega Seed")
+        self._recalc_passives()
+        quest_items_set = {q["item"] for q in EXTENDED_QUESTS} | {q["rick_gift"] for q in EXTENDED_QUESTS}; subquest_items_set = {s["key_item"] for s in EXTENDED_SUBQUESTS} | {s["need_item"] for s in EXTENDED_SUBQUESTS}
+        crafting_materials_set = {m for rec in CRAFTING_RECIPES.values() for m in rec["materials"] if self._is_crafting_material(m)}
         def count_list(items): counts = {}; [counts.update({it: counts.get(it, 0) + 1}) for it in items]; return counts
         inv_normal = [itm for itm in p.inventory if itm not in crafting_materials_set and itm not in quest_items_set and itm not in subquest_items_set]
         counts_normal = count_list(inv_normal); counts_quest = count_list([it for it in p.inventory if it in quest_items_set])

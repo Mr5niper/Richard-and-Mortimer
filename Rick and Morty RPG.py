@@ -8,7 +8,7 @@ import string
 import re
 # ===== The version lives HERE and only here. Change this one line to bump the game; the title bar and =====
 # ===== both Windows taskbar IDs all read from it. No more hunting it down in three places, Morty. =====
-GAME_VERSION = "1.4.2.0"
+GAME_VERSION = "1.4.2.1"
 # ===== Utility junk. The little functions that do the boring lifting so the cool code doesn't have to. =====
 def to_letter_number(x, y):
     if not (1 <= x <= 26):
@@ -595,7 +595,7 @@ RICK_CHAT = {
         "cycle": [
             "Rick waves you off. \"It's done, Morty. Go do whatever it is you do. *burp*\"",
             "\"OMNI-CORE's humming. We're retired from questing. Shoo.\"",
-            "\"Infinite power, {pc}. Try not to break it before I plug in the cable box.\"",
+            "\"Infinite power, {pc}. The ship flies again the second I bolt this in. Try not to break it first.\"",
         ],
     },
 }
@@ -1314,9 +1314,9 @@ def generate_enhanced_game(width, height, difficulty=DifficultyLevel.NORMAL,
             }
             rooms.append((x, y))
     used_rooms = {(1, 1)}
-    # The Hub. Home base. Where I am.
-    world[(1, 1)]["name"] = "Citadel Hub"
-    world[(1, 1)]["desc"] = "The Citadel Hub: neon, noise, and a thousand arguments. Ricks and Mortys swarm the plaza."
+    # The Hub. Home base. Rick's garage, where he is, where the dead ship sits.
+    world[(1, 1)]["name"] = "Rick's Garage"
+    world[(1, 1)]["desc"] = "Rick's garage: the dead ship hulks in the corner, the workbench is buried in tools and half-built parts, and Rick is hunched over it welding the OMNI-CORE together."
     world[(1, 1)]["theme"] = "hub"
     glexo_pos = None  # The pawn shop's scattered out on the map somewhere, not bolted to the hub. Go find it.
     quest_rooms = []        # The rooms where the main-story special actions happen.
@@ -1342,7 +1342,7 @@ def generate_enhanced_game(width, height, difficulty=DifficultyLevel.NORMAL,
             chosen.append(pick); pool.remove(pick); refs.append(pick)
         return chosen
 
-    # I live at the Citadel Hub, which is also where you start, so you can hit me up right away
+    # I live in the garage, which is also where you start, so you can hit me up right away
     # and keep crawling back to me between chapters. Don't get clingy.
     world[(1, 1)]["npc"] = NPC("Rick C-137", -2, None, False, is_rick=True)
     world[(1, 1)]["desc"] += " Rick C-137 is here, hunched over a half-built contraption, muttering and drinking."
@@ -2149,6 +2149,22 @@ class EnhancedGameApp:
         self.text.see(tk.END)
         self.text.config(state='disabled')
 
+    def _play_beats(self, beats, on_done=None):
+        # Cinematic line player. Feed it (text, tag, delay_ms, centered) tuples and it reveals them one
+        # at a time with pauses, so a finale BUILDS instead of dumping all at once. Locks the input box
+        # while it plays so Morty can't mash through the moment, unlocks (or runs on_done) at the end.
+        try: self.entry.config(state="disabled")
+        except Exception: pass
+        def step(i):
+            if i >= len(beats):
+                if on_done: on_done()
+                return
+            text, tag, delay, centered = beats[i]
+            if centered: self.append_centered(text, tag)
+            else: self.append_colored(text, tag)
+            self.root.after(max(1, delay), lambda: step(i + 1))
+        step(0)
+
     def _talk_separator(self):
         # Put a blank line before a new talk reply so successive replies don't run together,
         # BUT only if there's already text on screen. A freshly cleared screen starts clean,
@@ -2486,7 +2502,7 @@ class EnhancedGameApp:
         _pairs = [("@ = You", "I = Items (or Credits)"),
                   ("E = Enemy", "N = Main Quest NPC"),
                   ("S = Side Quest NPC", "Q = Quest Room"),
-                  ("$ = Pawn Shop", "H = Citadel Hub")]
+                  ("$ = Pawn Shop", "H = Home (Garage)")]
         legend = "\nLEGEND:\n" + "".join(l.ljust(_W) + r + "\n" for l, r in _pairs)
         legend += "? = Unseen Dimension\n"
         self.map_text_widget.tag_config("map_legend", font=("Consolas", 15))
@@ -2580,7 +2596,7 @@ class EnhancedGameApp:
                     self.minimap_text.insert(tk.END, symbol, tag)
             self.minimap_text.insert(tk.END, "\n")
         self.minimap_text.insert(
-            tk.END, "\nLEGEND:\n@ = You        S = Side-NPC\nE = Enemy      I = Items\nN = Main-NPC   Q = Quest-Room\n$ = Pawn Shop  ? = Unseen\nH = Citadel Hub  [ ] = Empty", ("legend",)); self.minimap_text.config(state="disabled")
+            tk.END, "\nLEGEND:\n@ = You        S = Side-NPC\nE = Enemy      I = Items\nN = Main-NPC   Q = Quest-Room\n$ = Pawn Shop  ? = Unseen\nH = Home (Garage)  [ ] = Empty", ("legend",)); self.minimap_text.config(state="disabled")
     def toggle_crafting(self):
         if self._check_if_dead(): return
         if not self.player: self.append_colored("Start a game to craft!\n", "error"); return
@@ -2825,7 +2841,13 @@ class EnhancedGameApp:
                 elif combo == attach_combo: _cycle(attach_combo, update_attach_desc, event)
                 return "break"
         dlg.bind_class("TComboboxPopdown", "<Key>", _cycle_open)
-        tk.Label(dlg, text="The ship is dead, the bench is buried in junk, and Rick clearly has not slept. He jabs a thumb at the gear scattered across the workbench. \"Before you set one foot through a portal, Morty, kit yourself out. Take one of my gadgets and clip an attachment onto it. Choose like your life depends on it, because the second you step out there it absolutely does.\"", font=("Arial", 10), justify="left", wraplength=450).grid(row=0, column=0, columnspan=2, sticky=tk.W, padx=12, pady=(12, 8))
+        intro_box = tk.Text(dlg, height=7, width=58, font=("Arial", 10), wrap=tk.WORD, relief="flat", bg=dlg.cget("bg"), highlightthickness=0, borderwidth=0); intro_box.grid(row=0, column=0, columnspan=2, sticky=tk.W, padx=12, pady=(12, 8))
+        intro_box.tag_configure("spk", font=("Arial", 10, "bold"))
+        intro_box.insert(tk.END, "Rick: ", "spk")
+        intro_box.insert(tk.END, "\"Don't just stand there vibrating, Morty. Pick a main gadget, snap an attachment onto it, and go find the battery parts. Keep your eyes on the map, because I'm sure as hell not pausing this battery build to look for you.\"\n\n")
+        intro_box.insert(tk.END, "Morty: ", "spk")
+        intro_box.insert(tk.END, "\"R-right, okay! Just a gadget and an attachment... something that won't blow my arms off. Let's see...\"")
+        intro_box.config(state="disabled")
         tk.Label(dlg, text="Main Gadget:", font=("Arial", 12)).grid(row=1, column=0, sticky=tk.W, padx=10, pady=5)
         mainvar = tk.StringVar(value=random.choice([r["name"] for r in EXPANDED_RACES])); main_combo = ttk.Combobox(dlg, textvariable=mainvar, width=20, font=("Arial", 11), state="readonly")
         main_combo['values'] = [r["name"] for r in EXPANDED_RACES]; main_combo.grid(row=1, column=1, padx=10, pady=5)
@@ -3798,49 +3820,58 @@ class EnhancedGameApp:
         # OMNI-CORE's built, so the STORY's done, but maybe not the game. If Morty's still got
         # achievements, side quests, or gadgets hanging, I toss him the stats and let him keep
         # going. The real ending only fires once he's done EVERYTHING. See _maybe_true_ending.
-        self.append_colored("\n" + "="*60 + "\n", "achievement")
-        self.append_centered("THE OMNI-CORE IS COMPLETE\n", "banner")
-        self.append_colored("="*60 + "\n", "achievement")
-        self.append_colored(
-            "Rick snaps the Singularity Heart into place. The OMNI-CORE thrums, five stolen "
-            "wonders humming as one. No tiny civilization to unionize, no Zeep to one-up him. "
-            "Strike-proof, guilt-free, infinite power.\n", "lore")
-        self.append_colored(
-            f"'We did it, {self.player.name},' Rick burps. 'Real talk, you fetched, you fought, you didn't die. "
-            "Color me moderately impressed.'\n", "quest")
-        self.append_colored(
-            "He carries the OMNI-CORE past the dead Microverse Battery... and plugs it straight into "
-            "his interdimensional cable box.\n\n", "lore")
-        self.append_colored(
-            "'...Rick, that's a UNIVERSE of infinite power. For your CABLE?'\n", "lore")
-        self.append_colored(
-            f"'I'm never paying that bill again, {self.player.name}. Priorities. Now get schwifty, there's a "
-            "season finale on in nine thousand dimensions at once.'\n\n", "lore")
-        self.append_colored(
-            "Across the multiverse, President Morty notes the new power signature, smiles, and files "
-            "it away for later.\n", "success")
-        # Light up the end-game achievements now, but I'm holding the real ending till I decide.
-        self._suppress_true_ending = True
-        check_achievements(self.player, self.world, self)
-        self._suppress_true_ending = False
-        if self._is_fully_complete():
-            # He saved the main quest for dead last? Fine. Straight to the real ending with him.
-            self._true_ending(); return
-        # Still got stuff to do. Show the run so far, point him at 100, leave the keyboard on.
-        self._show_run_stats("📊 MAIN QUEST STATISTICS:")
-        left = self._completion_remaining()
-        self.append_colored("\n" + "="*60 + "\n", "quest")
-        self.append_colored(
-            f"The main story's done, {self.player.name}, but you haven't squeezed this multiverse dry yet. "
-            "Rick wanders off to enjoy his cable. You're free to keep poking around.\n", "lore")
-        self.append_colored("Still on the board before you've truly 100%'d it:\n", "quest")
-        self.append_colored(f"   Achievements:    {left['ach_done']}/{left['ach_total']}\n")
-        self.append_colored(f"   Side quests:     {left['sq_done']}/{left['sq_total']}\n")
-        self.append_colored(f"   Intel fragments: {left['intel_done']}/{left['intel_total']}\n")
-        self.append_colored(f"   Gadgets crafted: {left['craft_done']}/{left['craft_total']}\n")
-        self.append_colored(
-            "Finish every last one and Rick might just say something he'll regret. Keep going.\n", "success")
-        self.update_info_display()
+        name = "Morty"
+        # The payoff the whole game set up: the core goes into the SHIP, and the ship comes alive.
+        # Paced as timed beats so the climax actually builds instead of dumping in one breath.
+        beats = [
+            ("\n" + "="*60 + "\n", "achievement", 350, False),
+            ("THE OMNI-CORE IS COMPLETE\n", "banner", 800, True),
+            ("="*60 + "\n", "achievement", 700, False),
+            ("Rick slams the OMNI-CORE into the engine block. A violent green jolt rips through the "
+             "ship and the whole chassis roars to life. 'Hurry Morty, get in!' he barks, yanking "
+             "the wheel as the ship rockets forward and tears a jagged portal in the fabric of "
+             "space.\n", "achievement", 1800, False),
+            ("...\n", "lore", 1400, False),
+            ("All that high-octane tension drops to a dead crawl in a quiet drive-thru lane. 'Yeah, "
+             "gimme the Szechuan sauce,' Rick says into the speaker. 'Oh, and uh, a five-piece nugget, "
+             "somethin' to put the sauce on. Not the sweet and sour, *burp*, the Szechuan.'\n", "lore", 1900, False),
+            ("Morty stares at him in disbelief. 'W-wait, Rick, the "
+             "SAUCE? We crossed the entire multiverse, I almost DIED!'\n",
+             "lore", 1700, False),
+            ("Rick's already talking with his mouth half full of nuggets and sauce. 'Ohh, that's the "
+             "good stuff right there.'\n", "quest", 1700, False),
+            ("'That's INSANE!' Morty screams.\n", "lore", 1400, False),
+            ("Rick doesn't even look up. 'It's a sauce I like, Morty. I'm not gonna apologize for "
+             "likin' the, *burp*, the sauce.'\n", "quest", 1800, False),
+            ("Deep in the Citadel, the ship's energy signature blips onto a massive monitor wall. "
+             "President Morty silently watches the universe's most dangerous spacecraft idle outside "
+             "the last fast-food joint in any reality still serving that sauce, saying nothing as he "
+             "quietly encrypts the data and files it away for later.\n", "success", 500, False),
+        ]
+        def after_climax():
+            self._suppress_true_ending = True
+            check_achievements(self.player, self.world, self)
+            self._suppress_true_ending = False
+            if self._is_fully_complete():
+                self._true_ending(); return
+            self._show_run_stats("📊 MAIN QUEST STATISTICS:")
+            left = self._completion_remaining()
+            self.append_colored("\n" + "="*60 + "\n", "quest")
+            self.append_colored(
+                f"The main story's done, {name}, but you haven't squeezed this multiverse dry yet. "
+                "Rick fires up the ship and waits, engine idling. You're free to keep poking around first.\n", "lore")
+            self.append_colored("Still on the board before you've truly 100%'d it:\n", "quest")
+            self.append_colored(f"   Achievements:    {left['ach_done']}/{left['ach_total']}\n")
+            self.append_colored(f"   Side quests:     {left['sq_done']}/{left['sq_total']}\n")
+            self.append_colored(f"   Intel fragments: {left['intel_done']}/{left['intel_total']}\n")
+            self.append_colored(f"   Gadgets crafted: {left['craft_done']}/{left['craft_total']}\n")
+            self.append_colored(
+                "Finish every last one and Rick might just say something he'll regret. Keep going.\n", "success")
+            self.update_info_display()
+            try: self.entry.config(state="normal")
+            except Exception: pass
+        self._play_beats(beats, on_done=after_climax)
+        return
 
     def _compute_max_total_kills(self, placed, pool_size):
         # Every third kill (ANY kind) pops one more hidden enemy, and killing those counts toward the

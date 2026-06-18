@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.4.2.1 - 2026-06-15
+**Hotfix**
+- Fixed the home base, Morty, because somehow it was telling you that you were standing in my garage AND in the middle of the Citadel plaza at the same time, which, last I checked, are two different places. Now home is my garage, the dead ship rusting in the corner, me hunched over the workbench like the story actually says. The Citadel's still out there on the map for you to go bother, where it belongs.
+- Killed a line where I threatened to plug the infinite-power core into a cable box. We're powering the SHIP, Morty, the thing that flies, not your cartoons. Whoever wrote that the first time was clearly running on no sleep. It was me.
+- Redid the equip screen so it's an actual back and forth instead of one dead-eyed instruction. I tell you to grab a gadget, snap on an attachment, go find the battery parts, and watch the map because I'm not pausing the build to come find you. You stammer something about not blowing your arms off. Names are bolded now too, like a real script.
+- Rewrote the whole ending. Before it just sort of... ended. Now you build the core, the ship roars back to life, we tear a hole through reality at full throttle, and then it all screeches to a stop in a drive-thru lane because the one thing I crossed the entire multiverse for is the last Szechuan sauce in any reality. You scream, I eat nuggets, President Morty quietly watches the most dangerous ship ever built idle outside a burger joint. That's an ending, Morty.
+
 ## v1.4.2.0 - 2026-06-15
 **The git-gud-or-die update**
 - Okay, Morty, I watched you "play" and it made me want to drink something that isn't even invented yet. You were dinging a new level off every single kill and steamrolling the whole roster with echo scream like that's a personality. So I tore the combat apart and rebuilt it. Leveling doesn't come free every fight now, the curve ramps, fast at first then it makes you WORK for it, like life, Morty, which you'd know if you ever finished anything. Everything out there got nastier, the little guys are still a joke but the big ones will actually put you down if you sleepwalk into them. And they grow when you grow now, so you can't just get fat on XP and coast through my multiverse. Oh, and your precious echo scream? Cooldown. You can't spam it back to back anymore. It's a finisher, Morty, not a security blanket.

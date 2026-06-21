@@ -4062,14 +4062,15 @@ class EnhancedGameApp:
     def _apply_post_craft_effects(self, recipe_name):
         # Special on-build effects, shared by the popup AND the typed `craft` command so the two can
         # never drift apart again (which is exactly how the injector ended up half-built before).
-        # Building the Mega Seed Injector is itself one safe dose: it flips Mega Seeds into usable
-        # items, drags any you already had out of the crafting pile, and counts as using a seed.
+        # Building the Mega Seed Injector flips Mega Seeds into usable items and drags any you already
+        # had out of the crafting pile. It does NOT count as using a seed, you have to actually inject
+        # one for that (and for the Mega Seed Master achievement). No freebie just for building it.
         p = self.player
         if recipe_name == "Mega Seed Injector":
-            p.max_charge += 10; p.charge = p.max_charge; p.hp = max(1, p.hp - 5); p.mega_seeds_used += 1
+            p.max_charge += 10; p.charge = p.max_charge; p.hp = max(1, p.hp - 5)
             p.mega_seed_injector_built = True
             self.append_colored("🧠 Mega Seed Injector boosts max charge by 10 but causes nausea (lose 5 HP)!\n", "achievement")
-            self.append_colored("🌱 Injector online. Mega Seeds are usable items now, not crafting parts.\n", "lore")
+            self.append_colored("🌱 Injector online. Mega Seeds are usable items now, not crafting parts. Inject one to actually use it.\n", "lore")
         elif recipe_name == "Interdimensional Goggles":
             for pos, rm in self.world.items():
                 if rm.get("npc") or rm.get("monster") or rm.get("items") or rm.get("motif") is not None: rm["visited"] = True

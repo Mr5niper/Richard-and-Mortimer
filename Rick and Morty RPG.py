@@ -2750,6 +2750,7 @@ class EnhancedGameApp:
             selected_difficulty = difficulty_var.get()
             self.difficulty = DifficultyLevel(selected_difficulty)
             d.destroy()
+            if self.current_save_name: self._write_setup_placeholder(self.current_save_name, "character")
             self.root.after(50, self.setup_game_world)
         d = tk.Toplevel(self.root)
         d.title("Select Difficulty")
@@ -4347,6 +4348,16 @@ class EnhancedGameApp:
             return sorted((fn[:-7] for fn in os.listdir(self.saves_dir) if fn.endswith(".rmsave")), key=str.lower)
         except Exception:
             return []
+    def _write_setup_placeholder(self, name, stage):
+        # A save that isn't a playable game yet, it just remembers that this slot is mid-setup and which
+        # step it's on ("difficulty" or "character"). Replaces the old save immediately on a new-game
+        # overwrite, and on load it sends you back into setup instead of loading a stale or absent game.
+        try:
+            data = {"player": None, "setup_stage": stage, "difficulty": getattr(self, "difficulty", DifficultyLevel.NORMAL), "save_name": name}
+            with open(self._save_path(name), "wb") as f: pickle.dump(data, f)
+        except Exception:
+            pass
+
     def _write_save(self, name, announce=True):
         if not self.player:
             if announce: self.append_colored("No game to save!\n", "error")
@@ -4370,6 +4381,18 @@ class EnhancedGameApp:
         if not os.path.isfile(path): messagebox.showerror("Load Error", "That universe no longer exists."); return
         try:
             with open(path, 'rb') as f: data = pickle.load(f)
+            # This slot never finished setup (new game that was backed out of before the character
+            # was made). Don't try to load a game that doesn't exist, just drop back into setup at
+            # whatever step it stopped on.
+            stage = data.get("setup_stage")
+            if stage and not data.get("player"):
+                self.current_save_name = data.get("save_name", name)
+                self.difficulty = data.get("difficulty", DifficultyLevel.NORMAL)
+                if stage == "character":
+                    self.setup_game_world()
+                else:
+                    self.show_difficulty_selection()
+                return
             self.player = data["player"]; self.world = data["world"]; self._sanitize_world()
             # Old save from before I added the seed toggle. If the Injector's already built, the
             # seeds count as usable now, so flip the switch and drag the loose ones over. Cleaning up after past me.
@@ -4458,12 +4481,14 @@ class EnhancedGameApp:
                 if not messagebox.askyesno("⚠️  Universe Already Exists",
                         f"A universe named '{name}' already exists.\n\nStarting a new one here will WIPE IT FROM EXISTENCE. Every room, every quest, that entire universe, gone forever.\n\nObliterate it and start fresh?"):
                     return
-                # Honor the wipe RIGHT NOW. The new game isn't built until character creation finishes,
-                # so if we don't delete the old file here, quitting or reloading mid-setup would bring
-                # the old universe back. Nuke it on confirm, as promised.
-                try: os.remove(self._save_path(name))
-                except OSError: pass
-            self.current_save_name = name; win.destroy(); self.start_new_game()
+            # Honor the wipe RIGHT NOW by replacing the slot with a "needs setup" placeholder. The real
+            # game isn't built until character creation finishes, so this stops the old universe from
+            # coming back if you bail mid-setup, AND if you reload this slot before finishing, the load
+            # path sees the placeholder and drops you back into setup at the right step instead of
+            # loading a stale game.
+            self.current_save_name = name
+            self._write_setup_placeholder(name, "difficulty")
+            win.destroy(); self.start_new_game()
         tk.Button(nf, text="✨  Create New Universe", font=("Arial", 11), command=do_create).pack(pady=(0, 8))
         ent.bind("<Return>", do_create)
         win.protocol("WM_DELETE_WINDOW", win.destroy); ent.focus_set()

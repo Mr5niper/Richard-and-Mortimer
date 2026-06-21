@@ -2193,6 +2193,11 @@ class EnhancedGameApp:
         self.entry.config(state="disabled" if menu else "normal")
     def show_main_menu(self):
         self.set_button_states(menu=True); self.text.config(state="normal"); self.text.delete(1.0, tk.END)
+        # Blank the side panels too, otherwise tearing a game down (New/Load) leaves the old game's
+        # Player Info and mini map sitting there like the game's still running.
+        for _panel in (getattr(self, "info_text", None), getattr(self, "minimap_text", None)):
+            if _panel is not None:
+                _panel.config(state="normal"); _panel.delete(1.0, tk.END); _panel.config(state="disabled")
         self.append_centered("RICK AND MORTY\n", "banner"); self.append_centered("🌟  Multiverse Mayhem! 🌟\n\n", "quest")
         splash = r"""
  ⠀⠀⠀⠀⠀  ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⢀⣀⣤⣴⣾⠿⠿⠿⠿⠟⠿⠟⠛⠻⠿⠿⠿⢿⣿⣷⣶⣤⣀                      
@@ -4410,6 +4415,13 @@ class EnhancedGameApp:
                     self.show_difficulty_selection()
                 return
             self.player = data["player"]; self.world = data["world"]; self._sanitize_world()
+            # Old save from before the garage rename. The hub room (1,1) used to be called "Citadel Hub"
+            # with the plaza description, which contradicted the story (Rick's in his garage). The name
+            # was baked into the saved world, so loading kept showing the old one. Fix it on load.
+            hub = self.world.get((1, 1))
+            if hub and hub.get("theme") == "hub":
+                hub["name"] = "Rick's Garage"
+                hub["desc"] = "Rick's garage: the dead ship hulks in the corner, the workbench is buried in tools and half-built parts, and Rick is hunched over it welding the OMNI-CORE together."
             # Old save from before I added the seed toggle. If the Injector's already built, the
             # seeds count as usable now, so flip the switch and drag the loose ones over. Cleaning up after past me.
             # Repair the Mega Seed Injector state. If the injector's in the bag but the switch never

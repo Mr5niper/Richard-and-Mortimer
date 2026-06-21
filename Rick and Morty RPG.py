@@ -1930,7 +1930,7 @@ class EnhancedGameApp:
         control_frame = tk.LabelFrame(right_frame, text="Game", font=("Arial", 10, "bold")); control_frame.pack(fill=tk.X, pady=(0, 10))
         # 'New / Load Game' takes the left column, 'Save' and 'Quit' split the right. Tidy.
         _game_btn_font = ("Segoe UI", 9)
-        newload = tk.Button(control_frame, text="New / Load Game", height=2, font=_game_btn_font, command=self.show_save_manager); newload.grid(row=0, column=0, padx=2, pady=2, sticky="ew"); self.buttons["new"] = newload; self.buttons["load"] = newload
+        newload = tk.Button(control_frame, text="New / Load Game", height=2, font=_game_btn_font, command=self._new_or_load); newload.grid(row=0, column=0, padx=2, pady=2, sticky="ew"); self.buttons["new"] = newload; self.buttons["load"] = newload
         sq_frame = tk.Frame(control_frame); sq_frame.grid(row=0, column=1, padx=0, pady=0, sticky="ew")
         save_btn = tk.Button(sq_frame, text="Save", height=2, font=_game_btn_font, command=self.save_game); save_btn.grid(row=0, column=0, padx=2, pady=2, sticky="ew"); self.buttons["save"] = save_btn
         quit_btn = tk.Button(sq_frame, text="Quit", height=2, font=_game_btn_font, command=self._hard_exit); quit_btn.grid(row=0, column=1, padx=2, pady=2, sticky="ew"); self.buttons["quit"] = quit_btn
@@ -2819,12 +2819,28 @@ class EnhancedGameApp:
         self._sanitize_world()
         self.player = None
         self.show_character_creation()
+    def _new_or_load(self):
+        from tkinter import messagebox
+        # Hitting New/Load while a game's running is just like quitting that game: offer to save it,
+        # then fully tear it down to the just-opened state BEFORE opening the universe picker. If we
+        # don't, the old in-memory game lingers, and backing out of a new game's setup would leave it
+        # running, even able to re-save over the slot you just overwrote. So: prompt, reset, then pick.
+        if self.player:
+            choice = messagebox.askyesnocancel("Leave This Universe",
+                "You've got a game running.\n\nYes = save it first\nNo = leave without saving\nCancel = keep playing")
+            if choice is None: return
+            if choice: self.save_game()
+            # Tear the running game down to a clean slate, exactly like the game just opened.
+            self.player = None
+            self.current_save_name = None
+            self._close_all_popups()
+            self.show_main_menu()
+        self.show_save_manager()
+
     def ask_new_game(self):
-        if self.player and not messagebox.askyesno("Universe Manager", "Leave this universe? Any unsaved progress here will be lost."): return
-        self.show_save_manager()
+        self._new_or_load()
     def ask_load(self):
-        if self.player and not messagebox.askyesno("Universe Manager", "Leave this universe? Any unsaved progress here will be lost."): return
-        self.show_save_manager()
+        self._new_or_load()
     def show_character_creation(self):
         dlg = tk.Toplevel(self.root); dlg.title("Rick's Garage"); self._center_popup(dlg, 480, 470); dlg.transient(self.root); dlg.grab_set(); self._apply_icon(dlg)
         def start():

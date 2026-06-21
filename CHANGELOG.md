@@ -1,13 +1,14 @@
 # Changelog
 
 ## v1.4.2.1 - 2026-06-15
-**Hotfix**
+**Polished it so you'd shut up, Morty**
 - Fixed the home base, Morty, because somehow it was telling you that you were standing in my garage AND in the middle of the Citadel plaza at the same time, which, last I checked, are two different places. Now home is my garage, the dead ship rusting in the corner, me hunched over the workbench like the story actually says. The Citadel's still out there on the map for you to go bother, where it belongs.
 - Killed a line where I threatened to plug the infinite-power core into a cable box. We're powering the SHIP, Morty, the thing that flies, not your cartoons. Whoever wrote that the first time was clearly running on no sleep. It was me.
 - Redid the equip screen so it's an actual back and forth instead of one dead-eyed instruction. I tell you to grab a gadget, snap on an attachment, go find the battery parts, and watch the map because I'm not pausing the build to come find you. You stammer something about not blowing your arms off. Names are bolded now too, like a real script.
 - Rewrote the whole ending. Before it just sort of... ended. Now you build the core, the ship roars back to life, we tear a hole through reality at full throttle, and then it all screeches to a stop in a drive-thru lane because the one thing I crossed the entire multiverse for is the last Szechuan sauce in any reality. You scream, I eat nuggets, President Morty quietly watches the most dangerous ship ever built idle outside a burger joint. That's an ending, Morty.
 - The quit button doesn't just yeet you out anymore. If you've got a game going, it asks first: save and quit, quit without saving, or cancel and keep playing. Yes saves the exact same way the Save button does. You're welcome for not letting you rage-quit away an hour of progress, Morty.
 - Fixed a sneaky save bug, Morty. When you started a new universe on top of an old one, I said the old one was wiped, but I didn't actually torch it until you finished making your guy. So if you bailed in between, the old universe came crawling back like nothing happened. Now the old save is replaced the SECOND you confirm, and the slot remembers it's mid-setup. Quit or reload before you finish your character and it just drops you right back into setup where you left off, difficulty or character pick, instead of loading some zombie version of the old game.
+- And hitting New/Load while you're already in a game now works like it should. It used to just throw open the universe picker while your current game kept running in the background, which is how you'd end up accidentally re-saving over a slot you'd just wiped. Now it stops and asks, save it, leave it, or cancel, exactly like quitting, then fully shuts the running game down to the title screen before it opens the picker. No more ghost game lurking behind the menu.
 
 ## v1.4.2.0 - 2026-06-15
 **The git-gud-or-die update**

@@ -2448,7 +2448,7 @@ class EnhancedGameApp:
         line("HP", f"{p.hp}/{p.max_hp}"); line("Charge", f"{p.charge}/{p.max_charge}"); line("XP", f"{p.xp}   (Level {p.level})")
         line("Armor", p.armor); line("Damage", f"+{p.damage_bonus}")
         gap()
-        line("Position", f"({p.x}, {p.y})"); line("Quest", f"{p.quest_idx + 1}/{len(EXTENDED_QUESTS)}")
+        line("Position", f"({p.x}, {p.y})"); line("Quest", f"{min(p.quest_idx + 1, len(EXTENDED_QUESTS))}/{len(EXTENDED_QUESTS)}")
         line("Moves", p.moves_taken); line("Achievements", f"{len([a for a in ACHIEVEMENTS if a.unlocked])}/{len(ACHIEVEMENTS)}")
         gap()
         line("Items", len(p.inventory)); line("Materials", len(p.crafting_materials)); line("Intel", len(p.lore_fragments)); line("Federation Credits", p.federation_credits)
@@ -2896,6 +2896,22 @@ class EnhancedGameApp:
         tk.Label(dlg, text=f"Difficulty: {self.difficulty.value.title()}    •    Universe: {self.current_save_name or '(none)'}", font=("Arial", 11, "bold")).grid(row=5, column=0, columnspan=2, pady=10)
         tk.Button(dlg, text="Begin", command=start, font=("Arial", 14), bg="#4ADE80", fg="white").grid(row=6, column=0, columnspan=2, pady=16)
         main_combo.focus_set()
+    def _level_scale_monster(self, monster):
+        # Scale a monster to the player's level ONCE (the flag stops it compounding). Above level 1,
+        # each player level adds +5% HP and +3.5% damage to whatever it already had. Called the moment
+        # a room reveals the enemy so the HP shown is its real, final HP, no jump when you start swinging.
+        if monster is None or getattr(monster, "level_scaled", False): return
+        p = self.player
+        if not p or p.level <= 1:
+            return
+        lv = p.level - 1
+        hp_scale = 1.0 + 0.05 * lv
+        dmg_scale = 1.0 + 0.035 * lv
+        monster.max_hp = max(1, int(monster.max_hp * hp_scale))
+        monster.hp = max(1, int(monster.hp * hp_scale))
+        monster.damage = max(1, int(monster.damage * dmg_scale))
+        monster.level_scaled = True
+
     def print_room(self):
         if not self.player: return
         x, y = self.player.x, self.player.y; room = self.world[(x, y)]; room["visited"] = True; self.player.visited.add((x, y)); self.player.teleport_locations.add((x, y))
@@ -2912,6 +2928,7 @@ class EnhancedGameApp:
         elif room.get("looted"): self.append_colored(f"🫳 Nothing left here. You already grabbed {self._np(room['looted'][-1])} from this spot.\n", "lore")
         if room["npc"]: self.append_colored(f"👤 {room['npc'].name} is here.\n", "achievement" if room['npc'].is_subquest else "quest")
         if room["monster"]:
+            self._level_scale_monster(room["monster"])   # lock its real HP BEFORE we show it
             if getattr(room["monster"], "hidden", False):
                 self.append_colored("\n*** SURPRISE ATTACK!!! ***\n", "surprise")
             self.append_colored(f"⚔️ DANGER: {room['monster'].name} blocks your path! ", "combat"); self.append_colored(f"(HP: {room['monster'].hp}/{room['monster'].max_hp})\n", "combat")
@@ -3002,17 +3019,9 @@ class EnhancedGameApp:
         combat_log = []   # Always initialize it. Don't make me explain why.
 
         # ===== Level-scaling: monsters keep pace with you so you can't just outlevel the whole game. =====
-        # Done ONCE per monster (the flag stops it compounding every round). Above level 1, each player
-        # level adds +5% HP and +3.5% damage to whatever this thing already had, so the world keeps pace
-        # with you instead of becoming a petting zoo, without snowballing into an unwinnable wall.
-        if not getattr(monster, "level_scaled", False) and p.level > 1:
-            lv = p.level - 1
-            hp_scale = 1.0 + 0.05 * lv
-            dmg_scale = 1.0 + 0.035 * lv
-            monster.max_hp = max(1, int(monster.max_hp * hp_scale))
-            monster.hp = max(1, int(monster.hp * hp_scale))
-            monster.damage = max(1, int(monster.damage * dmg_scale))
-            monster.level_scaled = True
+        # Done ONCE per monster (the flag stops it compounding). This is normally already done the moment
+        # the room revealed the enemy (so the HP you saw is the real HP), this call is just a safety net.
+        self._level_scale_monster(monster)
 
         # ===== Status ticks at the top of the round: poison eats you, debuffs count down. =====
         if p.dot_turns > 0:

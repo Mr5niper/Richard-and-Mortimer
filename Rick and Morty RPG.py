@@ -1900,7 +1900,14 @@ class EnhancedGameApp:
         
     def _hard_exit(self):
         from tkinter import messagebox; import sys
-        if not messagebox.askyesno("Quit Game", "Are you sure you want to quit?"): return
+        # Game in progress? Offer to save before quitting. Yes = save (same action as the Save button)
+        # then quit, No = quit without saving, Cancel = keep playing.
+        if self.player:
+            choice = messagebox.askyesnocancel("Quit Game", "Save before you quit?\n\nYes = save and quit\nNo = quit without saving\nCancel = keep playing")
+            if choice is None: return
+            if choice: self.save_game()
+        else:
+            if not messagebox.askyesno("Quit Game", "Are you sure you want to quit?"): return
         self.root.quit(); self.root.destroy(); sys.exit(0)
     def setup_interface(self):
         main_frame = tk.Frame(self.root); main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -4451,6 +4458,11 @@ class EnhancedGameApp:
                 if not messagebox.askyesno("⚠️  Universe Already Exists",
                         f"A universe named '{name}' already exists.\n\nStarting a new one here will WIPE IT FROM EXISTENCE. Every room, every quest, that entire universe, gone forever.\n\nObliterate it and start fresh?"):
                     return
+                # Honor the wipe RIGHT NOW. The new game isn't built until character creation finishes,
+                # so if we don't delete the old file here, quitting or reloading mid-setup would bring
+                # the old universe back. Nuke it on confirm, as promised.
+                try: os.remove(self._save_path(name))
+                except OSError: pass
             self.current_save_name = name; win.destroy(); self.start_new_game()
         tk.Button(nf, text="✨  Create New Universe", font=("Arial", 11), command=do_create).pack(pady=(0, 8))
         ent.bind("<Return>", do_create)
